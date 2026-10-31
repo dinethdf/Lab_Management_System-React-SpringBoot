@@ -1,0 +1,83 @@
+.result-entry-container {
+  padding: 24px;
+  animation: fadeIn 0.3s ease;
+}
+
+.subtitle {
+  color: var(--text-light);
+  margin-bottom: 24px;
+}
+
+.scan-form {
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.scan-input-group {
+  display: flex;
+  gap: 12px;
+  max-width: 500px;
+}
+
+.scan-input-group input {
+  flex: 1;
+}
+
+.context-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 16px;
+  background-color: var(--bg-color);
+  border-radius: 8px;
+  border-left: 4px solid var(--primary-color);
+}
+
+.context-header h3 {
+  margin: 0;
+  color: var(--primary-dark);
+}
+
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 24px;
+}
+
+.results-table th,
+.results-table td {
+  padding: 12px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.results-table th {
+  background-color: var(--bg-color);
+  color: var(--text-light);
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+}
+
+.param-name {
+  font-weight: 500;
+}
+
+.param-unit,
+.param-range {
+  color: var(--text-light);
+  font-size: 0.9rem;
+}
+
+.result-input {
+  width: 150px;
+  padding: 8px 12px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}

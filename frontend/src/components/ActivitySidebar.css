@@ -1,0 +1,49 @@
+.activity-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.activity-header h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.chart-section h4, .upcoming-section h4 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 16px;
+}
+
+.chart-container {
+  width: 100%;
+}
+
+.upcoming-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.upcoming-item {
+  cursor: pointer;
+}
+
+.upcoming-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.upcoming-info img {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.upcoming-info p {
+  margin: 0;
+}

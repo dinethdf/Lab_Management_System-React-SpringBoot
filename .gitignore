@@ -1,0 +1,17 @@
+
+# AI and Project Config Files
+.agents/
+AGENTS.md
+GEMINI.md
+TASK_BOARD.md
+docs/
+*.py
+
+# Environment Variables and Configs
+application.properties
+application.yml
+
+# Compiled files
+*.class
+HashGen.java
+

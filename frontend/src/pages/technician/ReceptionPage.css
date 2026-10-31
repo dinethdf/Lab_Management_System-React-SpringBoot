@@ -1,0 +1,161 @@
+.reception-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.search-form {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.search-form input {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+}
+
+.patient-card {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  background-color: #f8fafc;
+  padding: 15px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.patient-avatar {
+  background-color: #e2e8f0;
+  width: 50px;
+  height: 50px;
+  border-radius: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+}
+
+.patient-details h4 {
+  margin: 0 0 5px 0;
+  color: #0f172a;
+}
+
+.patient-details p {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.registration-form {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.registration-form form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.registration-form input, .registration-form select {
+  padding: 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+}
+
+.test-list {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 15px;
+}
+
+.test-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-bottom: 1px solid #f1f5f9;
+  cursor: pointer;
+}
+
+.test-checkbox:last-child {
+  border-bottom: none;
+}
+
+.test-checkbox small {
+  color: #94a3b8;
+  margin-left: auto;
+}
+
+.order-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #f8fafc;
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.order-summary p {
+  margin: 0;
+  font-weight: 500;
+  color: #334155;
+}
+
+/* Success Modal Styles */
+.success-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.success-modal {
+  background-color: white;
+  padding: 40px;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  max-width: 400px;
+}
+
+.success-modal h2 {
+  color: #0f172a;
+  margin-top: 15px;
+}
+
+.barcode-display {
+  background-color: #f8fafc;
+  border: 2px dashed #cbd5e1;
+  padding: 20px;
+  margin: 25px 0;
+  border-radius: 8px;
+}
+
+.barcode-label {
+  display: block;
+  font-size: 12px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.barcode-value {
+  display: block;
+  font-size: 24px;
+  font-weight: bold;
+  color: #0f172a;
+  margin-top: 5px;
+  font-family: monospace;
+}

@@ -1,0 +1,42 @@
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+}
+
+.stat-header {
+  margin-bottom: 8px;
+}
+
+.stat-title {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-main);
+  margin: 0;
+}
+
+.stat-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stat-value {
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0;
+}
+
+.stat-percentage {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.stat-chart {
+  margin-top: 8px;
+}
