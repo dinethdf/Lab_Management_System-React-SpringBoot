@@ -1,6 +1,7 @@
 // All API endpoint URLs used across the React app
+// Reads from REACT_APP_API_BASE_URL (configured in Vercel or .env) or falls back to local backend
 export const API_URLS = {
-  BASE: 'http://localhost:8080/api',
+  BASE: process.env.REACT_APP_API_BASE_URL || 'http://localhost:8080/api',
 
   // --- Catalog Module ---
   CATALOG_TESTS: '/catalog/tests',           // GET all active tests / POST create new test
