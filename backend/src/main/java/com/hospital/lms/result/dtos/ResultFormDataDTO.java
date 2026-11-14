@@ -26,7 +26,20 @@ public class ResultFormDataDTO {
     private String notes;
     private String rejectionReason;
 
+    // Sibling tests under the same order (for 1-click test switching)
+    private String labSlipBarcode;
+    private List<SiblingTestDTO> siblingTests;
+
     private List<ResultFormParameterDTO> parameters;
+
+    @Data
+    public static class SiblingTestDTO {
+        private Long orderTestId;
+        private String testSampleCode;
+        private String testName;
+        private String testCode;
+        private String status;
+    }
 
     @Data
     public static class ResultFormParameterDTO {

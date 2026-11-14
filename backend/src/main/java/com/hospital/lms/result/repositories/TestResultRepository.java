@@ -10,6 +10,11 @@ import java.util.Optional;
 @Repository
 public interface TestResultRepository extends JpaRepository<TestResult, Long> {
     Optional<TestResult> findByOrderTestId(Long orderTestId);
+    Optional<TestResult> findByOrderTest_TestSampleCode(String testSampleCode);
+    List<TestResult> findByOrderTest_TestOrder_LabSlipBarcode(String labSlipBarcode);
     List<TestResult> findByStatusOrderBySubmittedAtDesc(TestResult.ResultStatus status);
     List<TestResult> findByEnteredByIdOrderByUpdatedAtDesc(Long enteredById);
+
+    // Count results by verification status (e.g. SUBMITTED for pending review)
+    long countByStatus(TestResult.ResultStatus status);
 }

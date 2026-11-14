@@ -230,3 +230,19 @@ CREATE TABLE result_values (
     FOREIGN KEY (test_result_id) REFERENCES test_results(id) ON DELETE CASCADE,
     FOREIGN KEY (parameter_id) REFERENCES test_parameters(id)
 );
+
+-- 7. DIAGNOSTIC REPORTS
+CREATE TABLE reports (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    test_result_id  BIGINT NOT NULL UNIQUE,
+    report_number   VARCHAR(100) NOT NULL UNIQUE,
+    pdf_path        VARCHAR(500) NOT NULL,
+    approved_by     BIGINT NOT NULL,
+    generated_at    DATETIME NOT NULL,
+    created_at      DATETIME NOT NULL,
+    updated_at      DATETIME NOT NULL,
+    created_by      BIGINT,
+    updated_by      BIGINT,
+    CONSTRAINT fk_report_test_result FOREIGN KEY (test_result_id) REFERENCES test_results(id),
+    CONSTRAINT fk_report_approver    FOREIGN KEY (approved_by)    REFERENCES users(id)
+);

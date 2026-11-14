@@ -56,8 +56,11 @@ public class CollectionService {
         }
 
         String barcode = rawBarcode.trim();
-        TestOrder order = testOrderRepository.findByLabSlipBarcode(barcode)
-                .orElseThrow(() -> new IllegalArgumentException("No laboratory order found for Lab Slip barcode: " + barcode));
+        String searchBarcode = barcode.toUpperCase().startsWith("PS-")
+                ? "LS-" + barcode.substring(3)
+                : barcode;
+        TestOrder order = testOrderRepository.findByLabSlipBarcode(searchBarcode)
+                .orElseThrow(() -> new IllegalArgumentException("No laboratory order found for barcode: " + barcode));
 
         // 1. Ensure container slots exist for all ordered tests
         if (order.getOrderTests() != null) {
@@ -270,14 +273,8 @@ public class CollectionService {
             throw new IllegalArgumentException("Container barcode code or ID is required.");
         }
 
-        // Lockout rule for future-day collections
-        if (container.getDayOffset() != null && container.getDayOffset() > 0 && container.getDueDate() != null) {
-            if (container.getDueDate().isAfter(LocalDate.now())) {
-                throw new IllegalArgumentException("Specimen container " + container.getContainerCode() +
-                        " is scheduled for Day " + container.getDayOffset() + " (" + container.getDueDate() +
-                        ") and is locked against early collection until its scheduled date.");
-            }
-        }
+        // Off-schedule collection note: Early or delayed multi-day collections are permitted with staff clinical confirmation.
+        // We do not hard-lock early/late collections so patients who arrive off-schedule are not turned away.
 
         if (container.getStatus() != ContainerStatus.PENDING_COLLECTION && container.getStatus() != ContainerStatus.REJECTED) {
             throw new IllegalArgumentException("Container " + container.getContainerCode() +
@@ -419,7 +416,7 @@ public class CollectionService {
         dto.setContainerCode(container.getContainerCode());
         dto.setDayOffset(container.getDayOffset());
         dto.setDueDate(container.getDueDate());
-        dto.setDueToday(container.getDueDate() == null || !container.getDueDate().isAfter(LocalDate.now()));
+        dto.setDueToday(container.getDueDate() == null || container.getDueDate().isEqual(LocalDate.now()));
 
         if (container.getOrderTest() != null) {
             dto.setStickerSetFormattedNumber(container.getOrderTest().getStickerSetNumber());

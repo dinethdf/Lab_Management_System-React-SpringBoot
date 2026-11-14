@@ -7,6 +7,7 @@ import com.hospital.lms.catalog.repositories.TestParameterRepository;
 import com.hospital.lms.catalog.utils.RangeSelector;
 import com.hospital.lms.order.models.Container;
 import com.hospital.lms.order.models.OrderTest;
+import com.hospital.lms.order.models.TestOrder;
 import com.hospital.lms.order.repositories.ContainerRepository;
 import com.hospital.lms.order.repositories.OrderTestRepository;
 import com.hospital.lms.patient.models.Patient;
@@ -38,25 +39,36 @@ public class ResultService {
     private final TestParameterRepository parameterRepository;
     private final UserRepository userRepository;
     private final ContainerRepository containerRepository;
+    private final PdfReportService pdfReportService;
 
     @Autowired
     public ResultService(TestResultRepository testResultRepository,
                          OrderTestRepository orderTestRepository,
                          TestParameterRepository parameterRepository,
                          UserRepository userRepository,
-                         ContainerRepository containerRepository) {
+                         ContainerRepository containerRepository,
+                         PdfReportService pdfReportService) {
         this.testResultRepository = testResultRepository;
         this.orderTestRepository = orderTestRepository;
         this.parameterRepository = parameterRepository;
         this.userRepository = userRepository;
         this.containerRepository = containerRepository;
+        this.pdfReportService = pdfReportService;
+    }
+
+    public ResultService(TestResultRepository testResultRepository,
+                         OrderTestRepository orderTestRepository,
+                         TestParameterRepository parameterRepository,
+                         UserRepository userRepository,
+                         ContainerRepository containerRepository) {
+        this(testResultRepository, orderTestRepository, parameterRepository, userRepository, containerRepository, null);
     }
 
     public ResultService(TestResultRepository testResultRepository,
                          OrderTestRepository orderTestRepository,
                          TestParameterRepository parameterRepository,
                          UserRepository userRepository) {
-        this(testResultRepository, orderTestRepository, parameterRepository, userRepository, null);
+        this(testResultRepository, orderTestRepository, parameterRepository, userRepository, null, null);
     }
 
     /**
@@ -87,12 +99,36 @@ public class ResultService {
 
         // 2. If not an SC sticker, check if scanning a legacy container code (e.g. TSC-00456-01-P1)
         if (orderTest == null) {
-            if (searchCode.matches("TSC-\\d+-\\d+-[A-Z]\\d+")) {
-                int lastHyphen = searchCode.lastIndexOf('-');
-                searchCode = searchCode.substring(0, lastHyphen);
+            String testSampleSearch = searchCode;
+            if (testSampleSearch.matches("TSC-\\d+-\\d+-[A-Z]\\d+")) {
+                int lastHyphen = testSampleSearch.lastIndexOf('-');
+                testSampleSearch = testSampleSearch.substring(0, lastHyphen);
             }
-            orderTest = orderTestRepository.findByTestSampleCode(searchCode)
-                    .orElseThrow(() -> new IllegalArgumentException("No laboratory order test found for code: " + rawBarcode));
+            Optional<OrderTest> otOpt = orderTestRepository.findByTestSampleCode(testSampleSearch);
+            if (otOpt.isPresent()) {
+                orderTest = otOpt.get();
+            }
+        }
+
+        // 3. If slip barcode (LS-YYYY-NNNNN or PS-YYYY-NNNNN), resolve by order's lab slip barcode
+        if (orderTest == null && (searchCode.toUpperCase().startsWith("LS-") || searchCode.toUpperCase().startsWith("PS-"))) {
+            String slipCode = searchCode.toUpperCase().startsWith("PS-")
+                    ? "LS-" + searchCode.substring(3)
+                    : searchCode;
+            Optional<TestOrder> orderOpt = testOrderRepository.findByLabSlipBarcode(slipCode);
+            if (orderOpt.isPresent()) {
+                TestOrder order = orderOpt.get();
+                if (order.getOrderTests() != null && !order.getOrderTests().isEmpty()) {
+                    orderTest = order.getOrderTests().stream()
+                            .filter(ot -> ot.getTestResult() == null || ot.getTestResult().getStatus() == TestResult.ResultStatus.DRAFT)
+                            .findFirst()
+                            .orElse(order.getOrderTests().get(0));
+                }
+            }
+        }
+
+        if (orderTest == null) {
+            throw new IllegalArgumentException("No laboratory order test found for code: " + rawBarcode);
         }
 
         Patient patient = orderTest.getTestOrder().getPatient();
@@ -106,6 +142,24 @@ public class ResultService {
         form.setTestId(orderTest.getTest().getId());
         form.setTestName(orderTest.getTest().getName());
         form.setTestCategory(orderTest.getTest().getCategory());
+
+        // Populate sibling tests under the same order for 1-click test switching
+        TestOrder parentOrder = orderTest.getTestOrder();
+        form.setLabSlipBarcode(parentOrder.getLabSlipBarcode());
+        if (parentOrder.getOrderTests() != null && parentOrder.getOrderTests().size() > 1) {
+            List<ResultFormDataDTO.SiblingTestDTO> siblings = parentOrder.getOrderTests().stream()
+                    .map(ot -> {
+                        ResultFormDataDTO.SiblingTestDTO sib = new ResultFormDataDTO.SiblingTestDTO();
+                        sib.setOrderTestId(ot.getId());
+                        sib.setTestSampleCode(ot.getTestSampleCode());
+                        sib.setTestName(ot.getTest().getName());
+                        sib.setTestCode(ot.getTest().getCode());
+                        sib.setStatus(ot.getTestResult() != null ? ot.getTestResult().getStatus().name() : "PENDING_ENTRY");
+                        return sib;
+                    })
+                    .collect(Collectors.toList());
+            form.setSiblingTests(siblings);
+        }
 
         form.setPatientId(patient.getId());
         form.setPatientName(patient.getFullName());
@@ -394,6 +448,16 @@ public class ResultService {
                     c.setStatus(Container.ContainerStatus.VERIFIED);
                     containerRepository.save(c);
                 }
+            }
+        }
+
+        // Auto-generate official diagnostic PDF report (FR-7.1 / E3)
+        if (pdfReportService != null) {
+            try {
+                pdfReportService.generateAndSaveReport(saved, seniorTech);
+            } catch (Exception e) {
+                org.slf4j.LoggerFactory.getLogger(ResultService.class)
+                        .warn("Diagnostic report PDF generation failed during approval: {}", e.getMessage());
             }
         }
 

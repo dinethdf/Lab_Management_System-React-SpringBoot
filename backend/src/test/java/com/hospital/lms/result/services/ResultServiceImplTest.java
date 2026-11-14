@@ -15,6 +15,7 @@ import org.mockito.Mockito;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 class ResultServiceImplTest {
@@ -97,5 +98,42 @@ class ResultServiceImplTest {
         );
 
         assertTrue(ex.getMessage().contains("rejection reason is required"));
+    }
+
+    @Test
+    @DisplayName("Should trigger PDF report generation when result is approved by Senior Tech")
+    void testApproveResultTriggersPdfReportGeneration() {
+        PdfReportService pdfReportService = Mockito.mock(PdfReportService.class);
+        ResultService serviceWithPdf = new ResultService(
+                testResultRepository,
+                orderTestRepository,
+                parameterRepository,
+                userRepository,
+                null,
+                pdfReportService
+        );
+
+        User tech1 = new User();
+        tech1.setId(10L);
+        tech1.setUsername("tech1");
+
+        User seniorTech = new User();
+        seniorTech.setId(20L);
+        seniorTech.setUsername("senior_tech");
+
+        TestResult result = new TestResult();
+        result.setId(105L);
+        result.setEnteredBy(tech1);
+        result.setStatus(ResultStatus.SUBMITTED);
+
+        when(userRepository.findByUsername("senior_tech")).thenReturn(Optional.of(seniorTech));
+        when(testResultRepository.findById(105L)).thenReturn(Optional.of(result));
+        when(testResultRepository.save(any(TestResult.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        TestResult approved = serviceWithPdf.approveResult(105L, "senior_tech");
+
+        assertEquals(ResultStatus.APPROVED, approved.getStatus());
+        assertEquals(seniorTech, approved.getVerifiedBy());
+        Mockito.verify(pdfReportService, Mockito.times(1)).generateAndSaveReport(approved, seniorTech);
     }
 }

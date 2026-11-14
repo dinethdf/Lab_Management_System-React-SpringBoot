@@ -16,4 +16,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     // Spring automatically generates the SQL query to find a user by their username
     Optional<User> findByUsername(String username);
     boolean existsByUsername(String username);
+
+    // Count active staff members
+    long countByIsActiveTrue();
 }

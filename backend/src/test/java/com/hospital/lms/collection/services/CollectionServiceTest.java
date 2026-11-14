@@ -200,4 +200,28 @@ public class CollectionServiceTest {
         assertEquals(10L, c1.getCollectedBy());
         assertNotNull(c1.getCollectedAt());
     }
+
+    @Test
+    @DisplayName("Collecting an off-schedule future-day or delayed container succeeds without hard lockout")
+    void testCollectTube_OffScheduleEarlyOrDelayed_Succeeds() {
+        Container c1 = new Container();
+        c1.setId(2L);
+        c1.setOrderTest(orderTest);
+        c1.setContainerCode("FBC-0001-U1");
+        c1.setDayOffset(1);
+        c1.setDueDate(LocalDate.now().plusDays(1)); // Scheduled for tomorrow (Early collection)
+        c1.setStatus(ContainerStatus.PENDING_COLLECTION);
+
+        when(containerRepository.findByContainerCodeIgnoreCase("FBC-0001-U1")).thenReturn(Optional.of(c1));
+        when(userRepository.findByUsername("labtech@gmail.com")).thenReturn(Optional.of(tech));
+        when(containerRepository.save(any(Container.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ContainerDetailDTO result = collectionService.collectTube("FBC-0001-U1", null, "labtech@gmail.com");
+
+        assertNotNull(result);
+        assertEquals("COLLECTED", c1.getStatus().name());
+        assertEquals("IN_PROGRESS", testOrder.getStatus());
+        assertEquals(10L, c1.getCollectedBy());
+        assertNotNull(c1.getCollectedAt());
+    }
 }
