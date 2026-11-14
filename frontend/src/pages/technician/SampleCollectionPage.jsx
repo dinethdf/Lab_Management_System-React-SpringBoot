@@ -24,6 +24,8 @@ import {
   Lock,
   Layers,
   Check,
+  Clock,
+  Calendar,
 } from 'lucide-react';
 import collectionService from '../../services/collectionService';
 
@@ -58,6 +60,10 @@ const SampleCollectionPage = () => {
   // Barcode Scanning for individual collection
   const [scanTubeCode, setScanTubeCode] = useState('');
   const [scanningLoading, setScanningLoading] = useState(false);
+
+  // Off-Schedule Confirmation Modal State
+  const [offScheduleModalOpen, setOffScheduleModalOpen] = useState(false);
+  const [pendingCollectData, setPendingCollectData] = useState(null);
 
   // Rejection Modal State
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
@@ -165,13 +171,119 @@ const SampleCollectionPage = () => {
   };
 
   // --------------------------------------------------------------------------
+  // SCHEDULE STATUS HELPER & OFF-SCHEDULE COLLECTION LOGIC
+  // --------------------------------------------------------------------------
+
+  // Helper to determine container's schedule status relative to today
+  const getContainerScheduleStatus = (container) => {
+    if (!container) {
+      return { isDueToday: true, isEarly: false, isOverdue: false, daysDiff: 0, label: 'Today' };
+    }
+
+    // Day 0 containers without a specific due date are always due today
+    if ((container.dayOffset === 0 || container.dayOffset === null) && !container.dueDate) {
+      return { isDueToday: true, isEarly: false, isOverdue: false, daysDiff: 0, label: 'Day 0 (Collect Today)' };
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    let dueDate = null;
+    if (container.dueDate) {
+      const datePart = typeof container.dueDate === 'string' ? container.dueDate.split('T')[0] : container.dueDate;
+      dueDate = new Date(datePart + 'T00:00:00');
+    }
+
+    if (!dueDate || isNaN(dueDate.getTime())) {
+      return {
+        isDueToday: container.isDueToday ?? true,
+        isEarly: false,
+        isOverdue: false,
+        daysDiff: 0,
+        label: container.dayOffset ? `Day ${container.dayOffset} (Due Today)` : 'Collect Today',
+      };
+    }
+
+    const diffTime = dueDate.getTime() - today.getTime();
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+    const formattedDue = dueDate.toLocaleDateString();
+
+    if (diffDays === 0) {
+      return {
+        isDueToday: true,
+        isEarly: false,
+        isOverdue: false,
+        daysDiff: 0,
+        label: container.dayOffset ? `Day ${container.dayOffset} (Due Today)` : 'Collect Today',
+      };
+    } else if (diffDays > 0) {
+      // Future day -> Early collection
+      const relLabel = diffDays === 1 ? 'Due Tomorrow' : `Due in ${diffDays} days`;
+      return {
+        isDueToday: false,
+        isEarly: true,
+        isOverdue: false,
+        daysDiff: diffDays,
+        label: `Day ${container.dayOffset ?? 1} (${relLabel} — ${formattedDue})`,
+      };
+    } else {
+      // Past day -> Delayed/Overdue collection
+      const pastDays = Math.abs(diffDays);
+      const relLabel = pastDays === 1 ? '1 day overdue' : `${pastDays} days overdue`;
+      return {
+        isDueToday: false,
+        isEarly: false,
+        isOverdue: true,
+        daysDiff: pastDays,
+        label: `Day ${container.dayOffset ?? 1} (${relLabel} — Due ${formattedDue})`,
+      };
+    }
+  };
+
+  // Helper to find a container object in the currently loaded order
+  const findContainer = (tubeCode, containerId) => {
+    if (!orderData) return null;
+    const all = [
+      ...(orderData.todayContainers || []),
+      ...(orderData.futureContainers || []),
+    ];
+    if (containerId) {
+      return all.find((c) => c.id === containerId);
+    }
+    if (tubeCode) {
+      const cleanCode = tubeCode.trim().toUpperCase();
+      return all.find((c) => c.containerCode && c.containerCode.toUpperCase() === cleanCode);
+    }
+    return null;
+  };
+
+  // Execute collection API call
+  const executeCollectTube = async (code, containerId) => {
+    setScanningLoading(true);
+    try {
+      const result = await collectionService.collectTube(code, containerId);
+      showSuccess(`Specimen collected: ${result.containerCode || 'Container'}`, 'Sample Collected');
+      setScanTubeCode('');
+      setOffScheduleModalOpen(false);
+      setPendingCollectData(null);
+      await refreshOrderContainers();
+    } catch (err) {
+      console.error('Error collecting specimen tube:', err);
+      const msg = err.response?.data?.message || err.message || 'Collection failed.';
+      showError(msg, 'Collection Failed');
+    } finally {
+      setScanningLoading(false);
+    }
+  };
+
+  // --------------------------------------------------------------------------
   // COLLECT SPECIMEN TUBE VIA BARCODE SCAN OR CLICK
   // --------------------------------------------------------------------------
   const handleCollectTube = async (tubeCode, containerId) => {
     const code = (tubeCode || scanTubeCode || '').trim().toUpperCase();
 
-    // If scanning in the top scanner and it's a lab slip, route to search
-    if (!containerId && code.startsWith('LS-')) {
+    // If scanning in the top scanner and it's a lab slip or patient slip, route to order search
+    if (!containerId && (code.startsWith('LS-') || code.startsWith('PS-'))) {
       handleSearchOrder(code);
       return;
     }
@@ -181,19 +293,36 @@ const SampleCollectionPage = () => {
       return;
     }
 
-    setScanningLoading(true);
-    try {
-      const result = await collectionService.collectTube(code, containerId);
-      showSuccess(`Specimen collected: ${result.containerCode || 'Container'}`, 'Sample Collected');
-      setScanTubeCode('');
-      await refreshOrderContainers();
-    } catch (err) {
-      console.error('Error collecting specimen tube:', err);
-      const msg = err.response?.data?.message || err.message || 'Collection failed.';
-      showError(msg, 'Collection Blocked');
-    } finally {
-      setScanningLoading(false);
+    const targetContainer = findContainer(code, containerId);
+
+    // If target container is identified and scheduled for a different date (Early or Delayed),
+    // intercept and prompt with off-schedule clinical confirmation modal
+    if (targetContainer) {
+      const schedule = getContainerScheduleStatus(targetContainer);
+      if (schedule.isEarly || schedule.isOverdue) {
+        setPendingCollectData({
+          container: targetContainer,
+          code,
+          containerId: targetContainer.id || containerId,
+          schedule,
+        });
+        setOffScheduleModalOpen(true);
+        return;
+      }
     }
+
+    // On-schedule: collect immediately
+    await executeCollectTube(code, containerId);
+  };
+
+  const handleConfirmOffScheduleCollect = () => {
+    if (!pendingCollectData) return;
+    executeCollectTube(pendingCollectData.code, pendingCollectData.containerId);
+  };
+
+  const handleCancelOffScheduleCollect = () => {
+    setOffScheduleModalOpen(false);
+    setPendingCollectData(null);
   };
 
   // --------------------------------------------------------------------------
@@ -327,12 +456,12 @@ const SampleCollectionPage = () => {
         {/* ======================================================== */}
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-xs flex flex-col gap-3">
           <label className="text-xs font-semibold text-gray-700 uppercase tracking-wider block">
-            Scan or Enter Patient Lab Slip Barcode
+            Scan Patient Receipt (PS-...) or Lab Routing Slip (LS-...)
           </label>
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
             <div className="flex-1">
               <BarcodeInput
-                placeholder="Scan or type Lab Slip Barcode (e.g. LS-2026-00001)..."
+                placeholder="Scan or type Lab Slip (LS-...) or Patient Slip (PS-...)..."
                 value={searchSlipBarcode}
                 onChange={(val) => setSearchSlipBarcode(val)}
                 onScan={handleSearchOrder}
@@ -550,7 +679,7 @@ const SampleCollectionPage = () => {
                     const isReceived = container.status === 'RECEIVED_AT_LAB';
                     const isRejected = container.status === 'REJECTED';
                     const isPending = container.status === 'PENDING_COLLECTION';
-                    const isFutureDay = container.dayOffset > 0 && !container.isDueToday;
+                    const schedule = getContainerScheduleStatus(container);
 
                     return (
                       <div
@@ -558,7 +687,9 @@ const SampleCollectionPage = () => {
                         className={`p-3.5 rounded-xl border flex flex-col justify-between gap-3 transition-all ${
                           isRejected
                             ? 'bg-red-50/40 border-red-300 ring-1 ring-red-200 shadow-xs'
-                            : isFutureDay
+                            : schedule.isOverdue
+                            ? 'bg-orange-50/30 border-orange-200'
+                            : schedule.isEarly
                             ? 'bg-amber-50/30 border-amber-200'
                             : isCollected
                             ? 'bg-green-50/20 border-green-200'
@@ -615,12 +746,15 @@ const SampleCollectionPage = () => {
                           {/* Day Offset / Due Date Notice */}
                           <div className="flex items-center justify-between text-[11px] text-gray-500 mt-1">
                             <span>Schedule:</span>
-                            {container.dayOffset === 0 ? (
-                              <span className="text-green-700 font-semibold">Day 0 (Collect Today)</span>
+                            {schedule.isDueToday ? (
+                              <span className="text-green-700 font-semibold">{schedule.label}</span>
+                            ) : schedule.isEarly ? (
+                              <span className="text-amber-800 font-semibold flex items-center gap-1">
+                                <Clock size={11} /> {schedule.label}
+                              </span>
                             ) : (
-                              <span className={`font-semibold flex items-center gap-1 ${isFutureDay ? 'text-amber-800' : 'text-blue-700'}`}>
-                                {isFutureDay && <Lock size={11} />}
-                                Day {container.dayOffset} {isFutureDay ? `(Due ${container.dueDate || 'later'})` : '(Due Today!)'}
+                              <span className="text-orange-800 font-semibold flex items-center gap-1">
+                                <AlertTriangle size={11} /> {schedule.label}
                               </span>
                             )}
                           </div>
@@ -632,12 +766,29 @@ const SampleCollectionPage = () => {
                             <Button
                               variant="primary"
                               size="sm"
-                              className="w-full text-xs"
-                              disabled={isFutureDay}
-                              leftIcon={isFutureDay ? <Lock size={12} /> : <Droplet size={12} />}
+                              className={`w-full text-xs font-semibold ${
+                                schedule.isEarly
+                                  ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                                  : schedule.isOverdue
+                                  ? 'bg-orange-600 hover:bg-orange-700 text-white'
+                                  : ''
+                              }`}
+                              leftIcon={
+                                schedule.isEarly ? (
+                                  <Clock size={12} />
+                                ) : schedule.isOverdue ? (
+                                  <AlertTriangle size={12} />
+                                ) : (
+                                  <Droplet size={12} />
+                                )
+                              }
                               onClick={() => handleCollectTube(container.containerCode, container.id)}
                             >
-                              {isFutureDay ? 'Locked (Future Day)' : 'Collect Sample'}
+                              {schedule.isDueToday
+                                ? 'Collect Sample'
+                                : schedule.isEarly
+                                ? 'Collect Sample (Early)'
+                                : 'Collect Sample (Overdue)'}
                             </Button>
                           )}
 
@@ -784,6 +935,111 @@ const SampleCollectionPage = () => {
               </div>
             )}
           </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* MODAL: OFF-SCHEDULE SPECIMEN COLLECTION WARNING          */}
+        {/* ======================================================== */}
+        {offScheduleModalOpen && pendingCollectData && (
+          <Modal
+            isOpen={offScheduleModalOpen}
+            onClose={handleCancelOffScheduleCollect}
+            title="Off-Schedule Specimen Collection Warning"
+            size="md"
+            footer={
+              <div className="flex justify-end gap-2.5 w-full">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleCancelOffScheduleCollect}
+                  disabled={scanningLoading}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className={
+                    pendingCollectData.schedule.isEarly
+                      ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                      : 'bg-orange-600 hover:bg-orange-700 text-white'
+                  }
+                  loading={scanningLoading}
+                  onClick={handleConfirmOffScheduleCollect}
+                  leftIcon={<Droplet size={14} />}
+                >
+                  Confirm & Collect Sample
+                </Button>
+              </div>
+            }
+          >
+            <div className="flex flex-col gap-4 text-xs">
+              <div
+                className={`p-3.5 rounded-xl border flex items-start gap-3 ${
+                  pendingCollectData.schedule.isEarly
+                    ? 'bg-amber-50 border-amber-300 text-amber-900'
+                    : 'bg-orange-50 border-orange-300 text-orange-900'
+                }`}
+              >
+                <AlertTriangle
+                  size={20}
+                  className={
+                    pendingCollectData.schedule.isEarly
+                      ? 'text-amber-600 shrink-0 mt-0.5'
+                      : 'text-orange-600 shrink-0 mt-0.5'
+                  }
+                />
+                <div className="flex-1">
+                  <h4 className="font-bold text-sm">
+                    {pendingCollectData.schedule.isEarly
+                      ? 'Early Specimen Collection'
+                      : 'Delayed / Overdue Specimen Collection'}
+                  </h4>
+                  <p className="text-xs mt-1 leading-relaxed">
+                    {pendingCollectData.schedule.isEarly
+                      ? `This specimen tube is scheduled for a future protocol date (Day ${pendingCollectData.container.dayOffset}). Collecting early may affect clinical time-sensitive interpretations.`
+                      : `This specimen tube was scheduled for Day ${pendingCollectData.container.dayOffset} and is overdue. Collecting delayed may require clinical verification.`}
+                  </p>
+                </div>
+              </div>
+
+              {/* Specimen Details Summary Card */}
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-3.5 flex flex-col gap-2">
+                <div className="flex items-center justify-between pb-2 border-b border-gray-200">
+                  <span className="font-semibold text-gray-700">Specimen Barcode</span>
+                  <span className="font-mono font-bold text-gray-900 bg-white px-2 py-0.5 rounded border border-gray-300">
+                    {pendingCollectData.container.containerCode || pendingCollectData.code}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500">Test / Specimen:</span>
+                  <span className="font-medium text-gray-800">
+                    {pendingCollectData.container.testName} (
+                    {pendingCollectData.container.containerTypeName ||
+                      pendingCollectData.container.sampleTypeName ||
+                      'Tube'}
+                    )
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500">Scheduled Date:</span>
+                  <span className="font-bold text-gray-900">
+                    {pendingCollectData.schedule.label}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500">Actual Collection:</span>
+                  <span className="font-bold text-blue-700">
+                    Today ({new Date().toLocaleDateString()})
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-gray-500 italic">
+                Please verify that patient clinical conditions permit off-schedule collection before confirming.
+              </p>
+            </div>
+          </Modal>
         )}
 
         {/* ======================================================== */}

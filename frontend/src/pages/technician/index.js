@@ -4,3 +4,4 @@ export { default as ReceptionPage } from './ReceptionPage';
 export { default as ResultEntryPage } from './ResultEntryPage';
 export { default as PatientHistoryPage } from './PatientHistoryPage';
 export { default as SampleCollectionPage } from './SampleCollectionPage';
+export { default as MyResultsPage } from './MyResultsPage';

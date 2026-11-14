@@ -33,7 +33,11 @@ import {
   Phone,
   X,
   Barcode,
+  Download,
+  ExternalLink,
 } from 'lucide-react';
+import reportService from '../../services/reportService';
+import { Barcode128 } from '../../components/ui';
 
 /**
  * PatientHistoryPage — Patient profile and diagnostic order history with popup test allocation.
@@ -71,6 +75,36 @@ const PatientHistoryPage = () => {
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const [createdOrder, setCreatedOrder] = useState(null);
   const [viewingPastOrder, setViewingPastOrder] = useState(null);
+
+  // In-Person Report Retrieval Modal State (FR-7.4)
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reportBarcodeQuery, setReportBarcodeQuery] = useState('');
+  const [retrievedReports, setRetrievedReports] = useState([]);
+  const [reportLookupLoading, setReportLookupLoading] = useState(false);
+  const [reportLookupSearched, setReportLookupSearched] = useState(false);
+
+  // Lookup reports by order barcode, sample code, or container sticker
+  const handleLookupReport = async (codeToQuery) => {
+    const code = (codeToQuery || reportBarcodeQuery).trim();
+    if (!code) {
+      showError('Please enter or scan a barcode.', 'Validation Error');
+      return;
+    }
+    setReportLookupLoading(true);
+    setReportLookupSearched(true);
+    try {
+      const data = await reportService.lookupReportsByBarcode(code);
+      setRetrievedReports(data || []);
+      if (data && data.length > 0) {
+        showSuccess(`Found ${data.length} official report(s) for ${code}.`);
+      }
+    } catch (err) {
+      setRetrievedReports([]);
+      showError(err.response?.data?.message || 'No verified diagnostic reports found for this code.', 'Not Found');
+    } finally {
+      setReportLookupLoading(false);
+    }
+  };
 
   // ----------------------------------------------------
   // INITIAL DATA FETCHING
@@ -193,8 +227,13 @@ const PatientHistoryPage = () => {
   };
 
   // Browser print for dual slips
-  const handlePrintSlips = () => {
-    window.print();
+  const [printTarget, setPrintTarget] = useState('ALL'); // 'ALL' | 'PATIENT' | 'LAB'
+
+  const handlePrintSlips = (target = 'ALL') => {
+    setPrintTarget(target);
+    setTimeout(() => {
+      window.print();
+    }, 80);
   };
 
   // Compute patient age
@@ -273,9 +312,19 @@ const PatientHistoryPage = () => {
             top: 0;
             width: 100%;
             background: white !important;
-            padding: 20px;
+            padding: 10px;
+            margin: 0;
           }
           .no-print {
+            display: none !important;
+          }
+          /* Targeted print filtering */
+          .print-target-patient #lab-slip-copy,
+          .print-target-patient #slip-perforation-line {
+            display: none !important;
+          }
+          .print-target-lab #patient-slip-copy,
+          .print-target-lab #slip-perforation-line {
             display: none !important;
           }
         }
@@ -283,16 +332,31 @@ const PatientHistoryPage = () => {
 
       <div className="flex flex-col gap-6 max-w-6xl mx-auto pb-16">
         
-        {/* Top Navigation Bar: Breadcrumb + Back Button */}
-        <div className="flex items-center justify-between no-print">
-          <Button
-            variant="secondary"
-            size="sm"
-            leftIcon={<ArrowLeft size={15} />}
-            onClick={() => navigate('/reception')}
-          >
-            Back to Reception Desk
-          </Button>
+        {/* Top Navigation Bar: Breadcrumb + Back Button + Report Pickup */}
+        <div className="flex items-center justify-between no-print flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon={<ArrowLeft size={15} />}
+              onClick={() => navigate('/reception')}
+            >
+              Back to Reception Desk
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon={<FileText size={15} />}
+              onClick={() => {
+                setReportModalOpen(true);
+                setReportBarcodeQuery('');
+                setRetrievedReports([]);
+                setReportLookupSearched(false);
+              }}
+            >
+              Report Pickup (Barcode)
+            </Button>
+          </div>
 
           {isReceptionist && (
             <div className="flex items-center gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1 rounded-lg">
@@ -528,6 +592,20 @@ const PatientHistoryPage = () => {
                               onClick={() => setViewingPastOrder(ord)}
                             >
                               View Slip
+                            </Button>
+
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              leftIcon={<FileText size={13} />}
+                              onClick={() => {
+                                setReportBarcodeQuery(ord.labSlipBarcode);
+                                setReportModalOpen(true);
+                                handleLookupReport(ord.labSlipBarcode);
+                              }}
+                              title="Retrieve verified diagnostic reports for this order"
+                            >
+                              Reports
                             </Button>
 
                             {!isReceptionist && (statusUpper === 'PENDING' || statusUpper === 'IN_PROGRESS') && (
@@ -767,201 +845,357 @@ const PatientHistoryPage = () => {
         {/* ======================================================== */}
         {/* MODAL: PRINTABLE DUAL SLIP PREVIEW & REPRINT            */}
         {/* ======================================================== */}
-        {(createdOrder || viewingPastOrder) && (
-          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-            <div className="bg-white rounded-2xl shadow-xl max-w-3xl w-full p-6 flex flex-col gap-6 my-8">
-              
-              {/* Modal Top Bar (hidden on print) */}
-              <div className="flex items-center justify-between pb-4 border-b border-gray-200 no-print">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 size={22} className="text-green-600" />
-                  <div>
-                    <h3 className="font-semibold text-gray-900 text-base">
-                      {createdOrder ? 'Order Placed — Lab Slips Generated' : 'Diagnostic Lab Slip View'}
-                    </h3>
-                    <p className="text-xs text-gray-500">
-                      Lab Slip Barcode: <strong className="font-mono text-gray-900">{(createdOrder || viewingPastOrder).labSlipBarcode}</strong>
-                    </p>
-                  </div>
-                </div>
+        {(createdOrder || viewingPastOrder) && (() => {
+          const activeOrder = createdOrder || viewingPastOrder;
+          const patientSlipBarcode = activeOrder.patientSlipBarcode || (activeOrder.labSlipBarcode ? activeOrder.labSlipBarcode.replace(/^LS-/, 'PS-') : 'PS-PENDING');
 
-                <div className="flex items-center gap-2">
-                  {!isReceptionist && (
+          return (
+            <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+              <div className="bg-white rounded-2xl shadow-xl max-w-3xl w-full p-6 flex flex-col gap-6 my-8">
+                
+                {/* Modal Top Bar (hidden on print) */}
+                <div className="flex items-center justify-between pb-4 border-b border-gray-200 no-print flex-wrap gap-3">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={22} className="text-green-600" />
+                    <div>
+                      <h3 className="font-semibold text-gray-900 text-base">
+                        {createdOrder ? 'Order Placed — Lab Slips Generated' : 'Diagnostic Lab Slip View'}
+                      </h3>
+                      <p className="text-xs text-gray-500">
+                        Lab Slip: <strong className="font-mono text-gray-900">{activeOrder.labSlipBarcode}</strong>
+                        <span className="mx-1.5">•</span>
+                        Patient Slip: <strong className="font-mono text-blue-700">{patientSlipBarcode}</strong>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {!isReceptionist && (
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        className="bg-blue-600 hover:bg-blue-700"
+                        leftIcon={<Droplet size={15} />}
+                        onClick={() => {
+                          const code = activeOrder.labSlipBarcode;
+                          navigate(`/collection?slip=${code}`);
+                        }}
+                      >
+                        Collect Samples
+                      </Button>
+                    )}
+                    {/* Targeted Print Control Group */}
+                    <div className="inline-flex rounded-lg border border-gray-300 p-0.5 bg-gray-50 shadow-xs">
+                      <button
+                        type="button"
+                        onClick={() => handlePrintSlips('ALL')}
+                        className="px-2.5 py-1 text-xs font-medium text-gray-700 hover:text-gray-900 hover:bg-white rounded transition flex items-center gap-1"
+                        title="Print both Patient Receipt and Lab Routing Slip"
+                      >
+                        <Printer size={13} />
+                        <span>Print Both</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handlePrintSlips('PATIENT')}
+                        className="px-2.5 py-1 text-xs font-medium text-gray-700 hover:text-gray-900 hover:bg-white rounded transition"
+                        title="Print Patient Receipt only"
+                      >
+                        Receipt Only
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handlePrintSlips('LAB')}
+                        className="px-2.5 py-1 text-xs font-medium text-gray-700 hover:text-gray-900 hover:bg-white rounded transition"
+                        title="Print Lab Internal Slip only"
+                      >
+                        Lab Slip Only
+                      </button>
+                    </div>
                     <Button
-                      variant="primary"
+                      variant="secondary"
                       size="sm"
-                      className="bg-blue-600 hover:bg-blue-700"
-                      leftIcon={<Droplet size={15} />}
                       onClick={() => {
-                        const code = (createdOrder || viewingPastOrder).labSlipBarcode;
-                        navigate(`/collection?slip=${code}`);
+                        setCreatedOrder(null);
+                        setViewingPastOrder(null);
                       }}
                     >
-                      Collect Samples
+                      Close
                     </Button>
-                  )}
-                  <Button variant="outline" size="sm" leftIcon={<Printer size={15} />} onClick={handlePrintSlips}>
-                    Print Slips
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => {
-                      setCreatedOrder(null);
-                      setViewingPastOrder(null);
-                    }}
-                  >
-                    Close
-                  </Button>
+                  </div>
                 </div>
-              </div>
 
-              {/* PRINTABLE DUAL SLIP TEMPLATE */}
-              <div id="printable-slip-area" className="flex flex-col gap-6 bg-white p-2">
-                
-                {/* -------------------------------------------------- */}
-                {/* SLIP 1: PATIENT RECEIPT COPY                       */}
-                {/* -------------------------------------------------- */}
-                <div className="border-2 border-gray-900 rounded-lg p-5 flex flex-col gap-3">
-                  <div className="flex items-start justify-between border-b-2 border-gray-900 pb-2">
-                    <div>
-                      <h1 className="text-base font-bold uppercase text-gray-900 tracking-wider">
-                        Hospital Diagnostic Laboratory
-                      </h1>
-                      <p className="text-[11px] font-medium text-gray-600">
-                        Patient Test Order Receipt / Collection Slip
-                      </p>
-                    </div>
-                    <div className="text-right text-[11px] text-gray-700">
-                      <p><strong>Date:</strong> {new Date().toLocaleDateString()}</p>
-                      <p><strong>Time:</strong> {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 bg-gray-50 p-3 rounded border border-gray-300 text-xs">
-                    <div>
-                      <p className="text-gray-500 text-[10px]">Patient Name</p>
-                      <p className="font-bold text-gray-900 text-sm">{patient.fullName}</p>
-                      <p className="text-gray-600 mt-1">
-                        <strong>ID:</strong> P-{String(patient.id).padStart(4, '0')} • {patient.gender} • {computedAge ? `${computedAge} yrs` : ''}
-                      </p>
-                      <p className="text-gray-600"><strong>Mobile:</strong> {patient.contactNumber}</p>
-                      <p className="text-gray-600"><strong>Doctor:</strong> {patient.referringDoctor || 'Self / Walk-in'}</p>
-                    </div>
-
-                    <div className="flex flex-col items-center justify-center p-2 bg-white border border-gray-400 rounded text-center">
-                      <span className="text-[9px] uppercase font-bold text-gray-400 tracking-wider">Official Lab Slip Barcode</span>
-                      <div className="my-1 py-1 px-3 bg-gray-900 text-white font-mono text-xs tracking-widest font-black rounded">
-                        |||| ||||| |||| || ||||||
+                {/* PRINTABLE DUAL SLIP TEMPLATE */}
+                <div
+                  id="printable-slip-area"
+                  className={`flex flex-col gap-6 bg-white p-2 ${
+                    printTarget === 'PATIENT' ? 'print-target-patient' : printTarget === 'LAB' ? 'print-target-lab' : ''
+                  }`}
+                >
+                  
+                  {/* -------------------------------------------------- */}
+                  {/* SLIP 1: PATIENT RECEIPT COPY                       */}
+                  {/* -------------------------------------------------- */}
+                  <div id="patient-slip-copy" className="border-2 border-gray-900 rounded-lg p-5 flex flex-col gap-3">
+                    <div className="flex items-start justify-between border-b-2 border-gray-900 pb-2">
+                      <div>
+                        <h1 className="text-base font-bold uppercase text-gray-900 tracking-wider">
+                          Hospital Diagnostic Laboratory
+                        </h1>
+                        <p className="text-[11px] font-medium text-gray-600">
+                          Patient Test Order Receipt / Collection Slip
+                        </p>
                       </div>
-                      <span className="text-xs font-mono font-bold text-gray-900 tracking-wider">
-                        {(createdOrder || viewingPastOrder).labSlipBarcode}
-                      </span>
+                      <div className="text-right text-[11px] text-gray-700">
+                        <p><strong>Date:</strong> {new Date().toLocaleDateString()}</p>
+                        <p><strong>Time:</strong> {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 bg-gray-50 p-3 rounded border border-gray-300 text-xs">
+                      <div>
+                        <p className="text-gray-500 text-[10px]">Patient Name</p>
+                        <p className="font-bold text-gray-900 text-sm">{patient.fullName}</p>
+                        <p className="text-gray-600 mt-1">
+                          <strong>ID:</strong> P-{String(patient.id).padStart(4, '0')} • {patient.gender} • {computedAge ? `${computedAge} yrs` : ''}
+                        </p>
+                        <p className="text-gray-600"><strong>Mobile:</strong> {patient.contactNumber}</p>
+                        <p className="text-gray-600"><strong>Doctor:</strong> {patient.referringDoctor || 'Self / Walk-in'}</p>
+                      </div>
+
+                      <div className="flex flex-col items-center justify-center p-2 bg-white border border-gray-300 rounded text-center">
+                        <span className="text-[9px] uppercase font-bold text-gray-500 tracking-wider mb-1">Patient Receipt Barcode</span>
+                        <div className="p-1 bg-white rounded">
+                          <Barcode128
+                            value={patientSlipBarcode}
+                            height={42}
+                            width={1.4}
+                            fontSize={11}
+                            margin={2}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Prescribed Tests Table */}
+                    <div>
+                      <h4 className="text-[11px] font-bold text-gray-800 uppercase tracking-wider mb-1">Prescribed Tests</h4>
+                      <table className="w-full text-xs border border-gray-300">
+                        <thead className="bg-gray-100 border-b border-gray-300 text-[11px]">
+                          <tr>
+                            <th className="py-1 px-2 text-left">#</th>
+                            <th className="py-1 px-2 text-left">Code</th>
+                            <th className="py-1 px-2 text-left">Test Name</th>
+                            <th className="py-1 px-2 text-left">Test Sample Code</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {activeOrder.orderTests?.map((ot, idx) => (
+                            <tr key={idx}>
+                              <td className="py-1 px-2 font-mono text-gray-500">{idx + 1}</td>
+                              <td className="py-1 px-2 font-mono font-bold text-gray-900">{ot.testCode}</td>
+                              <td className="py-1 px-2 text-gray-800">{ot.testName}</td>
+                              <td className="py-1 px-2 font-mono font-semibold text-blue-700">
+                                {ot.testSampleCode || 'TSC-PENDING'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="border-t border-gray-200 pt-1.5 text-[10px] text-gray-500 flex justify-between">
+                      <span>* Please present this slip at Sample Collection or Report Pickup.</span>
+                      <span className="font-semibold text-gray-700">Patient Receipt Copy</span>
                     </div>
                   </div>
 
-                  {/* Prescribed Tests Table */}
-                  <div>
-                    <h4 className="text-[11px] font-bold text-gray-800 uppercase tracking-wider mb-1">Prescribed Tests</h4>
-                    <table className="w-full text-xs border border-gray-300">
+                  {/* Perforation Line */}
+                  <div id="slip-perforation-line" className="relative py-1 flex items-center justify-center">
+                    <div className="border-t-2 border-dashed border-gray-400 w-full" />
+                    <span className="absolute bg-white px-3 text-[10px] text-gray-500 uppercase tracking-widest font-semibold">
+                      ✂ Tear along dashed line for Laboratory Routing Copy
+                    </span>
+                  </div>
+
+                  {/* -------------------------------------------------- */}
+                  {/* SLIP 2: LABORATORY INTERNAL ROUTING COPY           */}
+                  {/* -------------------------------------------------- */}
+                  <div id="lab-slip-copy" className="border-2 border-gray-900 rounded-lg p-5 flex flex-col gap-3 bg-gray-50/40">
+                    <div className="flex items-start justify-between border-b-2 border-gray-900 pb-2">
+                      <div>
+                        <h2 className="text-sm font-bold uppercase text-gray-900 tracking-wider">
+                          Laboratory Internal Routing Slip
+                        </h2>
+                        <p className="text-[10px] font-medium text-gray-600">Phlebotomy & Specimen Processing</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="p-1 bg-white border border-gray-300 rounded">
+                          <Barcode128
+                            value={activeOrder.labSlipBarcode || ''}
+                            height={36}
+                            width={1.2}
+                            fontSize={10}
+                            margin={1}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center text-xs text-gray-800 bg-white p-2.5 rounded border border-gray-300">
+                      <span><strong>Patient:</strong> {patient.fullName} (P-{String(patient.id).padStart(4, '0')})</span>
+                      <span><strong>Gender/Age:</strong> {patient.gender} / {computedAge ? `${computedAge} yrs` : '-'}</span>
+                      <span><strong>Doctor:</strong> {patient.referringDoctor || 'Self / Walk-in'}</span>
+                    </div>
+
+                    <table className="w-full text-xs border border-gray-300 bg-white">
                       <thead className="bg-gray-100 border-b border-gray-300 text-[11px]">
                         <tr>
-                          <th className="py-1 px-2 text-left">#</th>
-                          <th className="py-1 px-2 text-left">Code</th>
-                          <th className="py-1 px-2 text-left">Test Name</th>
-                          <th className="py-1 px-2 text-left">Test Sample Code</th>
+                          <th className="py-1 px-2 text-left">Sample Code</th>
+                          <th className="py-1 px-2 text-left">Test</th>
+                          <th className="py-1 px-2 text-left">Specimen Collection Status</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
-                        {(createdOrder || viewingPastOrder).orderTests?.map((ot, idx) => (
+                        {activeOrder.orderTests?.map((ot, idx) => (
                           <tr key={idx}>
-                            <td className="py-1 px-2 font-mono text-gray-500">{idx + 1}</td>
-                            <td className="py-1 px-2 font-mono font-bold text-gray-900">{ot.testCode}</td>
-                            <td className="py-1 px-2 text-gray-800">{ot.testName}</td>
-                            <td className="py-1 px-2 font-mono font-semibold text-blue-700">
-                              {ot.testSampleCode || 'TSC-PENDING'}
-                            </td>
+                            <td className="py-1.5 px-2 font-mono font-semibold text-gray-900">{ot.testSampleCode || 'TSC-PENDING'}</td>
+                            <td className="py-1.5 px-2">{ot.testName} ({ot.testCode})</td>
+                            <td className="py-1.5 px-2 text-gray-600">[ &nbsp; ] Collected &nbsp; [ &nbsp; ] Rejected</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
-                  </div>
 
-                  <div className="border-t border-gray-200 pt-1.5 text-[10px] text-gray-500 flex justify-between">
-                    <span>* Please present this slip at Sample Collection. Keep receipt to collect verified reports.</span>
-                    <span className="font-semibold text-gray-700">Patient Receipt Copy</span>
-                  </div>
-                </div>
-
-                {/* Perforation Line */}
-                <div className="relative py-1 flex items-center justify-center">
-                  <div className="border-t-2 border-dashed border-gray-400 w-full" />
-                  <span className="absolute bg-white px-3 text-[10px] text-gray-500 uppercase tracking-widest font-semibold">
-                    ✂ Tear along dashed line for Laboratory Routing Copy
-                  </span>
-                </div>
-
-                {/* -------------------------------------------------- */}
-                {/* SLIP 2: LABORATORY INTERNAL ROUTING COPY           */}
-                {/* -------------------------------------------------- */}
-                <div className="border-2 border-gray-900 rounded-lg p-5 flex flex-col gap-3 bg-gray-50/40">
-                  <div className="flex items-start justify-between border-b-2 border-gray-900 pb-2">
-                    <div>
-                      <h2 className="text-sm font-bold uppercase text-gray-900 tracking-wider">
-                        Laboratory Internal Routing Slip
-                      </h2>
-                      <p className="text-[10px] font-medium text-gray-600">Phlebotomy & Specimen Collection</p>
+                    <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-300 text-[11px] text-gray-700">
+                      <div>
+                        <p className="font-semibold">Phlebotomist / Collector:</p>
+                        <p className="mt-3 border-b border-gray-400" />
+                      </div>
+                      <div>
+                        <p className="font-semibold">Collection Time:</p>
+                        <p className="mt-3 border-b border-gray-400" />
+                      </div>
+                      <div>
+                        <p className="font-semibold">Condition:</p>
+                        <p className="mt-3 text-[10px] text-gray-500">[ ] Normal &nbsp; [ ] Hemolyzed</p>
+                      </div>
                     </div>
-                    <span className="text-xs font-mono font-bold px-2 py-0.5 bg-gray-900 text-white rounded">
-                      {(createdOrder || viewingPastOrder).labSlipBarcode}
+                  </div>
+
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+      {/* ============================================================ */}
+      {/* IN-PERSON REPORT RETRIEVAL MODAL (FR-7.4)                   */}
+      {/* ============================================================ */}
+      <Modal
+        isOpen={reportModalOpen}
+        onClose={() => setReportModalOpen(false)}
+        title="In-Person Diagnostic Report Counter Pickup (FR-7.4)"
+        size="lg"
+      >
+        <div className="flex flex-col gap-4 text-xs">
+          <p className="text-gray-600">
+            Scan or enter the patient's <strong>Lab Slip Barcode (LS-...)</strong>, <strong>Patient Slip Barcode (PS-...)</strong>, or <strong>Container Sticker (SC...)</strong> to retrieve and print their finalized diagnostic reports.
+          </p>
+
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Barcode size={15} className="absolute left-3 top-2.5 text-gray-400" />
+              <input
+                type="text"
+                value={reportBarcodeQuery}
+                onChange={(e) => setReportBarcodeQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleLookupReport();
+                  }
+                }}
+                placeholder="Scan or enter barcode (e.g. LS-2026-00456)"
+                className="w-full rounded-lg border border-gray-200 pl-9 pr-3 py-2 text-xs font-mono text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <Button
+              variant="primary"
+              size="sm"
+              loading={reportLookupLoading}
+              onClick={() => handleLookupReport()}
+            >
+              Lookup Reports
+            </Button>
+          </div>
+
+          {reportLookupLoading && (
+            <div className="py-6 flex justify-center">
+              <LoadingSpinner size="sm" />
+            </div>
+          )}
+
+          {!reportLookupLoading && reportLookupSearched && retrievedReports.length === 0 && (
+            <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center text-gray-500">
+              No verified diagnostic reports found for <strong>{reportBarcodeQuery}</strong>.
+            </div>
+          )}
+
+          {!reportLookupLoading && retrievedReports.length > 0 && (
+            <div className="flex flex-col gap-2 max-h-72 overflow-y-auto pr-1">
+              {retrievedReports.map((rep) => (
+                <div
+                  key={rep.id}
+                  className="p-3 bg-white border border-gray-200 rounded-lg flex items-center justify-between gap-3 shadow-xs"
+                >
+                  <div className="flex flex-col">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded text-[11px]">
+                        {rep.reportNumber}
+                      </span>
+                      <span className="font-semibold text-gray-900">{rep.testName}</span>
+                      <span className="text-gray-400">({rep.testCode})</span>
+                    </div>
+                    <span className="text-[11px] text-gray-500 mt-0.5">
+                      Patient: <strong>{rep.patientName}</strong> • Verified: {rep.generatedAt ? new Date(rep.generatedAt).toLocaleString() : '-'}
                     </span>
                   </div>
 
-                  <div className="flex justify-between items-center text-xs text-gray-800 bg-white p-2.5 rounded border border-gray-300">
-                    <span><strong>Patient:</strong> {patient.fullName} (P-{String(patient.id).padStart(4, '0')})</span>
-                    <span><strong>Gender/Age:</strong> {patient.gender} / {computedAge ? `${computedAge} yrs` : '-'}</span>
-                    <span><strong>Doctor:</strong> {patient.referringDoctor || 'Self / Walk-in'}</span>
-                  </div>
-
-                  <table className="w-full text-xs border border-gray-300 bg-white">
-                    <thead className="bg-gray-100 border-b border-gray-300 text-[11px]">
-                      <tr>
-                        <th className="py-1 px-2 text-left">Sample Code</th>
-                        <th className="py-1 px-2 text-left">Test</th>
-                        <th className="py-1 px-2 text-left">Specimen Collection Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {(createdOrder || viewingPastOrder).orderTests?.map((ot, idx) => (
-                        <tr key={idx}>
-                          <td className="py-1.5 px-2 font-mono font-semibold text-gray-900">{ot.testSampleCode || 'TSC-PENDING'}</td>
-                          <td className="py-1.5 px-2">{ot.testName} ({ot.testCode})</td>
-                          <td className="py-1.5 px-2 text-gray-600">[ &nbsp; ] Collected &nbsp; [ &nbsp; ] Rejected</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-
-                  <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-300 text-[11px] text-gray-700">
-                    <div>
-                      <p className="font-semibold">Phlebotomist / Collector:</p>
-                      <p className="mt-3 border-b border-gray-400" />
-                    </div>
-                    <div>
-                      <p className="font-semibold">Collection Time:</p>
-                      <p className="mt-3 border-b border-gray-400" />
-                    </div>
-                    <div>
-                      <p className="font-semibold">Condition:</p>
-                      <p className="mt-3 text-[10px] text-gray-500">[ ] Normal &nbsp; [ ] Hemolyzed</p>
-                    </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="secondary"
+                      size="xs"
+                      leftIcon={<ExternalLink size={12} />}
+                      onClick={() => reportService.openReportPdfInNewTab(rep.testResultId)}
+                    >
+                      View / Print
+                    </Button>
+                    <Button
+                      variant="primary"
+                      size="xs"
+                      leftIcon={<Download size={12} />}
+                      onClick={() => reportService.downloadReportPdfByResultId(rep.testResultId, `${rep.reportNumber}.pdf`)}
+                    >
+                      Download PDF
+                    </Button>
                   </div>
                 </div>
-
-              </div>
+              ))}
             </div>
+          )}
+
+          <div className="flex items-center justify-end pt-3 border-t border-gray-100">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setReportModalOpen(false)}
+            >
+              Close
+            </Button>
           </div>
-        )}
+        </div>
+      </Modal>
 
       </div>
     </Layout>

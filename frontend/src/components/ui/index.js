@@ -30,6 +30,7 @@ export { PatientInfoCard } from './PatientInfoCard';
 export { AutoCompleteSearch } from './AutoCompleteSearch';
 export { TestCheckboxList } from './TestCheckboxList';
 export { BarcodeInput } from './BarcodeInput';
+export { Barcode128 } from './Barcode128';
 export { AgeRangeInput } from './AgeRangeInput';
 
 // Global Upper-Right Toast Notification System

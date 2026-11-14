@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LayoutDashboard, Users, FlaskConical, Droplet, FileText, Settings, ChevronDown, ChevronRight, Menu, Palette, CheckCircle2 } from 'lucide-react';
+import { LayoutDashboard, Users, FlaskConical, Droplet, FileText, Settings, ChevronDown, ChevronRight, Menu, Palette, CheckCircle2, ClipboardList } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 const Sidebar = () => {
@@ -14,6 +14,8 @@ const Sidebar = () => {
     { name: 'Test Catalog', icon: FlaskConical, path: '/tests' },
     { name: 'Reception Desk', icon: Users, path: '/reception' },
     { name: 'Sample Collection', icon: Droplet, path: '/collection' },
+    { name: 'Result Entry', icon: FileText, path: '/results/entry' },
+    { name: 'My Results', icon: ClipboardList, path: '/results/my-results' },
     { name: 'Verification Queue', icon: CheckCircle2, path: '/verification-queue' },
     { name: 'UI Components', icon: Palette, path: '/components' },
   ];
@@ -24,6 +26,7 @@ const Sidebar = () => {
     { name: 'Reception Desk', icon: Users, path: '/reception' },
     { name: 'Sample Collection', icon: Droplet, path: '/collection' },
     { name: 'Result Entry', icon: FileText, path: '/results/entry' },
+    { name: 'My Results', icon: ClipboardList, path: '/results/my-results' },
     { name: 'Verification Queue', icon: CheckCircle2, path: '/verification-queue' },
     { name: 'UI Components', icon: Palette, path: '/components' },
   ];
@@ -34,6 +37,7 @@ const Sidebar = () => {
     { name: 'Reception Desk', icon: Users, path: '/reception' },
     { name: 'Sample Collection', icon: Droplet, path: '/collection' },
     { name: 'Result Entry', icon: FileText, path: '/results/entry' },
+    { name: 'My Results', icon: ClipboardList, path: '/results/my-results' },
     { name: 'UI Components', icon: Palette, path: '/components' },
   ];
 

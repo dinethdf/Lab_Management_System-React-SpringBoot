@@ -11,8 +11,9 @@ import {
   FormTextarea,
   useToast,
 } from '../../components/ui';
-import { FlaskConical, Save, Send, AlertTriangle, CheckCircle2, RotateCcw } from 'lucide-react';
+import { FlaskConical, Save, Send, AlertTriangle, CheckCircle2, RotateCcw, Download, ExternalLink } from 'lucide-react';
 import resultService from '../../services/resultService';
+import reportService from '../../services/reportService';
 
 /**
  * ResultEntryPage — Lab technician result recording workbench.
@@ -35,8 +36,6 @@ const ResultEntryPage = () => {
   const handleScan = async (scannedCode) => {
     if (!scannedCode || !scannedCode.trim()) return;
     setLoading(true);
-    setError(null);
-    setSuccess(null);
 
     try {
       const data = await resultService.getResultFormByCode(scannedCode.trim());
@@ -116,8 +115,6 @@ const ResultEntryPage = () => {
   const handleSaveDraft = async () => {
     if (!formData) return;
     setSubmitting(true);
-    setError(null);
-    setSuccess(null);
 
     try {
       const valuesPayload = Object.keys(paramValues).map((paramId) => {
@@ -197,8 +194,6 @@ const ResultEntryPage = () => {
     setFormData(null);
     setParamValues({});
     setNotes('');
-    setError(null);
-    setSuccess(null);
   };
 
   return (
@@ -223,13 +218,59 @@ const ResultEntryPage = () => {
 
         {/* Barcode Scanner Intake */}
         <div className="bg-white rounded-xl shadow-xs border border-gray-100 p-6 flex flex-col gap-3">
-          <h2 className="text-sm font-bold text-gray-800">1. Scan Specimen Container or Test Sample Code</h2>
+          <h2 className="text-sm font-bold text-gray-800">1. Scan Specimen Container, Test Sample, or Lab Routing Slip</h2>
           <BarcodeInput
-            placeholder="Scan barcode or enter code (e.g. TSC-00001-01 or container TSC-00001-01-P1)..."
+            placeholder="Scan barcode or enter code (e.g. LS-..., TSC-..., or container FBC-0001-P1)..."
             onScan={handleScan}
             disabled={loading}
           />
         </div>
+
+        {/* Multi-test Sibling Switcher Bar */}
+        {formData && formData.siblingTests && formData.siblingTests.length > 1 && (
+          <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-blue-100 text-blue-700 rounded-lg">
+                <FlaskConical size={18} className="shrink-0" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-blue-900 block">
+                  Tests on Order Slip: <span className="font-mono">{formData.labSlipBarcode || 'Multi-Test Slip'}</span>
+                </span>
+                <span className="text-[11px] text-blue-700">
+                  Switch entry forms directly without re-scanning:
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {formData.siblingTests.map((sib) => {
+                const isCurrent = sib.orderTestId === formData.orderTestId;
+                return (
+                  <button
+                    key={sib.orderTestId}
+                    type="button"
+                    disabled={loading || isCurrent}
+                    onClick={() => handleScan(sib.testSampleCode)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5 ${
+                      isCurrent
+                        ? 'bg-blue-600 text-white shadow-xs font-bold ring-2 ring-blue-400 ring-offset-1'
+                        : 'bg-white text-gray-700 hover:bg-blue-100 hover:text-blue-800 border border-blue-200'
+                    }`}
+                  >
+                    <span>{sib.testName} ({sib.testCode})</span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
+                        isCurrent ? 'bg-blue-700 text-blue-100' : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {sib.status}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Result Form Container */}
         {formData && (
@@ -295,10 +336,28 @@ const ResultEntryPage = () => {
                 )}
 
                 {formData.status === 'APPROVED' && (
-                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-800">
-                    <p className="font-medium flex items-center gap-1">
-                      <CheckCircle2 size={14} /> Result has been approved and released. No modifications allowed.
+                  <div className="p-3.5 bg-green-50 border border-green-200 rounded-lg text-green-800 flex flex-col gap-2.5">
+                    <p className="font-medium flex items-center gap-1.5 text-xs">
+                      <CheckCircle2 size={16} className="text-green-600" /> Result has been approved and clinically released.
                     </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <Button
+                        variant="secondary"
+                        size="xs"
+                        leftIcon={<ExternalLink size={13} />}
+                        onClick={() => reportService.openReportPdfInNewTab(formData.resultId)}
+                      >
+                        View / Print PDF
+                      </Button>
+                      <Button
+                        variant="primary"
+                        size="xs"
+                        leftIcon={<Download size={13} />}
+                        onClick={() => reportService.downloadReportPdfByResultId(formData.resultId, `report-${formData.testSampleCode}.pdf`)}
+                      >
+                        Download PDF
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>

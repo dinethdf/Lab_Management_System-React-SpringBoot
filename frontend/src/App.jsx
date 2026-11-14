@@ -4,7 +4,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 // Role-based Page Imports
 import { LoginPage, ChangePasswordPage } from './pages/auth';
 import { AdminUserManagementPage, TestCatalogPage } from './pages/admin';
-import { ReceptionPage, ResultEntryPage, PatientHistoryPage, SampleCollectionPage } from './pages/technician';
+import { ReceptionPage, ResultEntryPage, PatientHistoryPage, SampleCollectionPage, MyResultsPage } from './pages/technician';
 import { VerificationQueuePage } from './pages/senior-tech';
 import { DashboardPage, ComponentShowcasePage } from './pages/shared';
 
@@ -117,6 +117,15 @@ function App() {
           element={
             <PrivateRoute allowedRoles={['ADMIN', 'LAB_TECHNICIAN', 'SENIOR_LAB_TECHNICIAN']}>
               <ResultEntryPage />
+            </PrivateRoute>
+          } 
+        />
+        {/* My Entered Results History Route (Restricted from Receptionist) */}
+        <Route 
+          path="/results/my-results" 
+          element={
+            <PrivateRoute allowedRoles={['ADMIN', 'LAB_TECHNICIAN', 'SENIOR_LAB_TECHNICIAN']}>
+              <MyResultsPage />
             </PrivateRoute>
           } 
         />

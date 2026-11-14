@@ -12,8 +12,9 @@ import {
   PatientInfoCard,
   useToast,
 } from '../../components/ui';
-import { CheckCircle2, XCircle, RefreshCw, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { CheckCircle2, XCircle, RefreshCw, AlertTriangle, ShieldAlert, FileText, Download, Printer, ExternalLink } from 'lucide-react';
 import resultService from '../../services/resultService';
+import reportService from '../../services/reportService';
 
 /**
  * VerificationQueuePage — Senior Lab Technician verification queue.
@@ -24,6 +25,8 @@ import resultService from '../../services/resultService';
 const VerificationQueuePage = () => {
   const { showSuccess, showError, showWarning } = useToast();
   const [queue, setQueue] = useState([]);
+  const [approvedReports, setApprovedReports] = useState([]);
+  const [activeTab, setActiveTab] = useState('pending');
   const [loading, setLoading] = useState(true);
 
   // Review modal
@@ -32,6 +35,10 @@ const VerificationQueuePage = () => {
   const [reviewFormDetail, setReviewFormDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+
+  // Post-approval download modal
+  const [approvalSuccessModalOpen, setApprovalSuccessModalOpen] = useState(false);
+  const [approvedReportMeta, setApprovedReportMeta] = useState(null);
 
   // Reject dialog
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
@@ -52,8 +59,18 @@ const VerificationQueuePage = () => {
     }
   };
 
+  const fetchApprovedReports = async () => {
+    try {
+      const data = await reportService.getRecentReports();
+      setApprovedReports(data || []);
+    } catch (err) {
+      console.error('Failed to load approved reports:', err);
+    }
+  };
+
   useEffect(() => {
     fetchQueue();
+    fetchApprovedReports();
   }, []);
 
   const openReviewModal = async (row) => {
@@ -77,9 +94,17 @@ const VerificationQueuePage = () => {
     setActionLoading(true);
     try {
       await resultService.approveResult(selectedResult.id);
-      showSuccess(`Result for ${selectedResult.testName} (${selectedResult.testSampleCode}) approved and released!`, 'Approved');
+      showSuccess(`Result for ${selectedResult.testName} (${selectedResult.testSampleCode}) approved and released! Official PDF report generated.`, 'Approved');
+      setApprovedReportMeta({
+        resultId: selectedResult.id,
+        testName: selectedResult.testName,
+        testSampleCode: selectedResult.testSampleCode,
+        patientName: selectedResult.patientName,
+      });
       setReviewModalOpen(false);
+      setApprovalSuccessModalOpen(true);
       fetchQueue();
+      fetchApprovedReports();
     } catch (err) {
       console.error('Approve error:', err);
       showError(err.response?.data?.message || 'Failed to approve result.', 'Approval Error');
@@ -188,39 +213,153 @@ const VerificationQueuePage = () => {
     },
   ];
 
+  const approvedColumns = [
+    {
+      header: 'Report #',
+      accessor: 'reportNumber',
+      cell: (row) => (
+        <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+          {row.reportNumber}
+        </span>
+      ),
+    },
+    {
+      header: 'Sample Code',
+      accessor: 'testSampleCode',
+      cell: (row) => (
+        <span className="font-mono text-xs font-bold text-gray-800 bg-gray-100 px-2 py-1 rounded">
+          {row.testSampleCode}
+        </span>
+      ),
+    },
+    {
+      header: 'Test Investigation',
+      accessor: 'testName',
+      cell: (row) => (
+        <div className="flex flex-col">
+          <span className="font-semibold text-gray-900">{row.testName}</span>
+          <span className="text-[11px] text-gray-400">{row.testCategory}</span>
+        </div>
+      ),
+    },
+    {
+      header: 'Patient Details',
+      accessor: 'patientName',
+      cell: (row) => (
+        <div className="flex flex-col">
+          <span className="font-medium text-gray-800">{row.patientName}</span>
+          <span className="text-[11px] text-gray-400">
+            {row.patientAgeYears ? `${row.patientAgeYears}y` : ''} • {row.patientSex || '-'}
+          </span>
+        </div>
+      ),
+    },
+    {
+      header: 'Verified By / Time',
+      accessor: 'generatedAt',
+      cell: (row) => (
+        <div className="flex flex-col text-xs">
+          <span className="font-medium text-gray-700">{row.approvedByUsername || '-'}</span>
+          <span className="text-[11px] text-gray-400">
+            {row.generatedAt ? new Date(row.generatedAt).toLocaleString() : '-'}
+          </span>
+        </div>
+      ),
+    },
+    {
+      header: 'Clinical Flags',
+      accessor: 'id',
+      cell: (row) => (
+        <div className="flex items-center gap-1.5">
+          {row.criticalCount > 0 && <Badge variant="red">{row.criticalCount} Critical</Badge>}
+          {row.abnormalCount > 0 && <Badge variant="amber">{row.abnormalCount} Abnormal</Badge>}
+          {row.criticalCount === 0 && row.abnormalCount === 0 && <Badge variant="green">Normal</Badge>}
+        </div>
+      ),
+    },
+    {
+      header: 'Official PDF',
+      accessor: 'testResultId',
+      cell: (row) => (
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="secondary"
+            size="xs"
+            leftIcon={<ExternalLink size={13} />}
+            onClick={() => reportService.openReportPdfInNewTab(row.testResultId)}
+            title="Open in new browser tab for viewing or printing"
+          >
+            View
+          </Button>
+          <Button
+            variant="primary"
+            size="xs"
+            leftIcon={<Download size={13} />}
+            onClick={() => reportService.downloadReportPdfByResultId(row.testResultId, `${row.reportNumber || 'report'}.pdf`)}
+            title="Download PDF to computer"
+          >
+            Download
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <Layout title="Verification Queue">
       <div className="flex flex-col gap-6">
         <PageHeader
           title="Diagnostic Verification Queue"
           subtitle="Senior Lab Technician verification workbench for submitted test results."
-          tabs={[{ label: 'Pending Verification', value: 'pending', count: queue.length }]}
-          activeTab="pending"
+          tabs={[
+            { label: 'Pending Verification', value: 'pending', count: queue.length },
+            { label: 'Recently Approved Reports', value: 'approved', count: approvedReports.length },
+          ]}
+          activeTab={activeTab}
+          onTabChange={(tab) => setActiveTab(tab)}
           actions={
             <Button
               variant="secondary"
               size="sm"
-              onClick={fetchQueue}
+              onClick={() => {
+                fetchQueue();
+                fetchApprovedReports();
+              }}
               disabled={loading}
               leftIcon={<RefreshCw size={15} className={loading ? 'animate-spin' : ''} />}
             >
-              Refresh Queue
+              Refresh
             </Button>
           }
         />
 
-        <DataTable
-          columns={columns}
-          data={queue}
-          loading={loading}
-          emptyState={
-            <EmptyState
-              title="Verification Queue Empty"
-              description="There are currently no submitted test results pending senior verification."
-              icon={<CheckCircle2 size={24} className="text-green-500" />}
-            />
-          }
-        />
+        {activeTab === 'pending' ? (
+          <DataTable
+            columns={columns}
+            data={queue}
+            loading={loading}
+            emptyState={
+              <EmptyState
+                title="Verification Queue Empty"
+                description="There are currently no submitted test results pending senior verification."
+                icon={<CheckCircle2 size={24} className="text-green-500" />}
+              />
+            }
+          />
+        ) : (
+          <DataTable
+            columns={approvedColumns}
+            data={approvedReports}
+            loading={loading}
+            emptyState={
+              <EmptyState
+                title="No Approved Reports"
+                description="Reports approved by Senior Lab Technicians will appear here with instant PDF download."
+                icon={<FileText size={24} className="text-blue-500" />}
+              />
+            }
+          />
+        )}
 
         {/* ========================================================================= */}
         {/* REVIEW & VERIFY RESULT MODAL */}
@@ -328,7 +467,26 @@ const VerificationQueuePage = () => {
                                   <span className="text-gray-400 italic">No range</span>
                                 )
                               ) : p.resultType === 'CHOICE' ? (
-                                <span className="text-gray-400">Options list</span>
+                                <div className="flex flex-wrap gap-1 max-w-xs">
+                                  {p.options && p.options.length > 0 ? (
+                                    p.options.map((opt, optIdx) => (
+                                      <span
+                                        key={optIdx}
+                                        className={`inline-flex items-center text-[10px] px-1.5 py-0.5 rounded font-medium border ${
+                                          opt.isAbnormal
+                                            ? 'bg-red-50 text-red-700 border-red-200'
+                                            : 'bg-gray-50 text-gray-600 border-gray-200'
+                                        }`}
+                                        title={opt.isAbnormal ? 'Clinically Abnormal Option' : 'Normal Option'}
+                                      >
+                                        {opt.label}
+                                        {opt.isAbnormal && <span className="ml-1 text-red-500 font-bold">*</span>}
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span className="text-gray-400">Options list</span>
+                                  )}
+                                </div>
                               ) : (
                                 <span className="text-gray-400">Descriptive</span>
                               )}
@@ -425,6 +583,68 @@ const VerificationQueuePage = () => {
               </Button>
             </div>
           </div>
+        </Modal>
+
+        {/* ========================================================================= */}
+        {/* APPROVAL SUCCESS & PDF DOWNLOAD MODAL */}
+        {/* ========================================================================= */}
+        <Modal
+          isOpen={approvalSuccessModalOpen}
+          onClose={() => setApprovalSuccessModalOpen(false)}
+          title="Diagnostic Report Approved & Released"
+          size="md"
+        >
+          {approvedReportMeta && (
+            <div className="flex flex-col gap-5 text-xs">
+              <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-xl text-green-900">
+                <CheckCircle2 size={28} className="text-green-600 shrink-0" />
+                <div>
+                  <h4 className="font-bold text-sm">Official PDF Report Generated</h4>
+                  <p className="text-[11px] text-green-800 mt-0.5">
+                    Results for <strong>{approvedReportMeta.testName}</strong> ({approvedReportMeta.testSampleCode}) for patient <strong>{approvedReportMeta.patientName}</strong> are finalized and released.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 flex flex-col gap-2 text-gray-700">
+                <p><strong>Next steps:</strong></p>
+                <ul className="list-disc pl-4 space-y-1 text-[11px] text-gray-600">
+                  <li>You can view or print the official diagnostic report directly in your browser.</li>
+                  <li>The PDF has been digitally signed and timestamped with your credentials.</li>
+                  <li>The report is now retrievable at the reception desk using the patient's slip barcode.</li>
+                </ul>
+              </div>
+
+              <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setApprovalSuccessModalOpen(false)}
+                >
+                  Close
+                </Button>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    leftIcon={<ExternalLink size={15} />}
+                    onClick={() => reportService.openReportPdfInNewTab(approvedReportMeta.resultId)}
+                  >
+                    View / Print PDF
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    leftIcon={<Download size={15} />}
+                    onClick={() => reportService.downloadReportPdfByResultId(approvedReportMeta.resultId, `report-${approvedReportMeta.testSampleCode}.pdf`)}
+                  >
+                    Download PDF
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </Modal>
       </div>
     </Layout>

@@ -26,6 +26,15 @@ export const API_URLS = {
   COLLECTION_RECEIVE_ALL: '/collection/receive-all',
   COLLECTION_REJECT: '/collection/reject',
   COLLECTION_PENDING: '/collection/pending',
+
+  // --- Dashboard Module ---
+  DASHBOARD_ADMIN_STATS: '/dashboard/admin-stats', // GET live admin operational metrics
+
+  // --- Reports Module (FR-7 / E3) ---
+  REPORTS: '/reports',
+  REPORTS_BY_RESULT: '/reports/result',
+  REPORTS_BY_BARCODE: '/reports/by-barcode',
+  REPORTS_RECENT: '/reports/recent',
 };
 
 // All role names used for permission checks in the UI
