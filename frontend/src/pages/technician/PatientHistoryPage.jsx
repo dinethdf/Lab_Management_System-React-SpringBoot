@@ -35,6 +35,7 @@ import {
   Barcode,
   Download,
   ExternalLink,
+  Copy,
 } from 'lucide-react';
 import reportService from '../../services/reportService';
 import { Barcode128 } from '../../components/ui';
@@ -104,6 +105,12 @@ const PatientHistoryPage = () => {
     } finally {
       setReportLookupLoading(false);
     }
+  };
+
+  const handleCopyPatientReportLink = (rep) => {
+    const link = rep.shareLink || `${window.location.origin}/report/${rep.shareToken}`;
+    navigator.clipboard.writeText(link);
+    showSuccess('Patient web report link copied to clipboard! You can share this with the patient.', 'Link Copied');
   };
 
   // ----------------------------------------------------
@@ -1170,6 +1177,15 @@ const PatientHistoryPage = () => {
                       onClick={() => reportService.openReportPdfInNewTab(rep.testResultId)}
                     >
                       View / Print
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="xs"
+                      leftIcon={<Copy size={12} />}
+                      onClick={() => handleCopyPatientReportLink(rep)}
+                      title="Copy Patient Web Link"
+                    >
+                      Copy Link
                     </Button>
                     <Button
                       variant="primary"

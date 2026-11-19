@@ -28,6 +28,7 @@ import {
   FileText,
   Download,
   ExternalLink,
+  Copy,
   MapPin,
   Calendar,
   Sparkles,
@@ -284,6 +285,12 @@ const ReceptionPage = () => {
     } finally {
       setReportLookupLoading(false);
     }
+  };
+
+  const handleCopyPatientReportLink = (rep) => {
+    const link = rep.shareLink || `${window.location.origin}/report/${rep.shareToken}`;
+    navigator.clipboard.writeText(link);
+    showSuccess('Patient web report link copied to clipboard! You can share this with the patient.', 'Link Copied');
   };
 
   const computeAge = (dateOfBirth) => {
@@ -776,6 +783,15 @@ const ReceptionPage = () => {
                       onClick={() => reportService.openReportPdfInNewTab(rep.testResultId)}
                     >
                       View / Print
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="xs"
+                      leftIcon={<Copy size={12} />}
+                      onClick={() => handleCopyPatientReportLink(rep)}
+                      title="Copy Patient Web Link"
+                    >
+                      Copy Link
                     </Button>
                     <Button
                       variant="primary"

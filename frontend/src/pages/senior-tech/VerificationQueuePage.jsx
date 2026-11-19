@@ -12,7 +12,7 @@ import {
   PatientInfoCard,
   useToast,
 } from '../../components/ui';
-import { CheckCircle2, XCircle, RefreshCw, AlertTriangle, ShieldAlert, FileText, Download, Printer, ExternalLink } from 'lucide-react';
+import { CheckCircle2, XCircle, RefreshCw, AlertTriangle, ShieldAlert, FileText, Download, Printer, ExternalLink, Copy, Link as LinkIcon } from 'lucide-react';
 import resultService from '../../services/resultService';
 import reportService from '../../services/reportService';
 
@@ -110,6 +110,29 @@ const VerificationQueuePage = () => {
       showError(err.response?.data?.message || 'Failed to approve result.', 'Approval Error');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleCopyPatientLink = (report) => {
+    const link = report.shareLink || `${window.location.origin}/report/${report.shareToken}`;
+    navigator.clipboard.writeText(link);
+    showSuccess('Patient web report link copied to clipboard! Share this URL with the patient.', 'Link Copied');
+  };
+
+  const handleCopyNewApprovedLink = async () => {
+    try {
+      if (!approvedReportMeta) return;
+      const reports = await reportService.lookupReportsByBarcode(approvedReportMeta.testSampleCode);
+      if (reports && reports.length > 0) {
+        const rep = reports[0];
+        const link = rep.shareLink || `${window.location.origin}/report/${rep.shareToken}`;
+        navigator.clipboard.writeText(link);
+        showSuccess('Patient web report link copied to clipboard!', 'Link Copied');
+      } else {
+        showWarning('Could not resolve report link. You can copy it from the Recently Approved Reports tab.', 'Link Notice');
+      }
+    } catch (err) {
+      showError('Failed to copy patient link.', 'Error');
     }
   };
 
@@ -278,7 +301,7 @@ const VerificationQueuePage = () => {
       ),
     },
     {
-      header: 'Official PDF',
+      header: 'Report Actions',
       accessor: 'testResultId',
       cell: (row) => (
         <div className="flex items-center gap-1.5">
@@ -290,6 +313,15 @@ const VerificationQueuePage = () => {
             title="Open in new browser tab for viewing or printing"
           >
             View
+          </Button>
+          <Button
+            variant="ghost"
+            size="xs"
+            leftIcon={<Copy size={13} />}
+            onClick={() => handleCopyPatientLink(row)}
+            title="Copy Patient Web Link"
+          >
+            Copy Link
           </Button>
           <Button
             variant="primary"
@@ -625,6 +657,15 @@ const VerificationQueuePage = () => {
                 </Button>
 
                 <div className="flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    leftIcon={<Copy size={15} />}
+                    onClick={handleCopyNewApprovedLink}
+                    title="Copy patient-facing secure web link"
+                  >
+                    Copy Patient Link
+                  </Button>
                   <Button
                     variant="secondary"
                     size="sm"

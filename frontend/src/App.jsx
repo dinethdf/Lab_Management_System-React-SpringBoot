@@ -7,6 +7,7 @@ import { AdminUserManagementPage, TestCatalogPage } from './pages/admin';
 import { ReceptionPage, ResultEntryPage, PatientHistoryPage, SampleCollectionPage, MyResultsPage } from './pages/technician';
 import { VerificationQueuePage } from './pages/senior-tech';
 import { DashboardPage, ComponentShowcasePage } from './pages/shared';
+import PatientReportPage from './pages/public/PatientReportPage';
 
 // Global Toast Notifications
 import { ToastProvider } from './context/ToastContext';
@@ -50,6 +51,7 @@ function App() {
         {/* ======================================================== */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/change-password" element={<ChangePasswordPage />} />
+        <Route path="/report/:shareToken" element={<PatientReportPage />} />
         
         {/* ======================================================== */}
         {/* 2. SHARED DASHBOARD (Dynamic Role-based Routing)          */}

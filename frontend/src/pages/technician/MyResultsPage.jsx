@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   Clock,
   Search,
+  Copy,
 } from 'lucide-react';
 import resultService from '../../services/resultService';
 import reportService from '../../services/reportService';
@@ -51,6 +52,22 @@ const MyResultsPage = () => {
       showError(err.response?.data?.message || 'Failed to load your test results.', 'Fetch Error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCopyPatientLink = async (row) => {
+    try {
+      const reports = await reportService.lookupReportsByBarcode(row.testSampleCode);
+      if (reports && reports.length > 0) {
+        const rep = reports[0];
+        const link = rep.shareLink || `${window.location.origin}/report/${rep.shareToken}`;
+        navigator.clipboard.writeText(link);
+        showSuccess('Patient web report link copied to clipboard! You can share this with the patient.', 'Link Copied');
+      } else {
+        showWarning('Could not resolve report link for this sample code.', 'Notice');
+      }
+    } catch (err) {
+      showError('Failed to copy patient link.', 'Error');
     }
   };
 
@@ -207,6 +224,15 @@ const MyResultsPage = () => {
                 title="View Official Diagnostic PDF"
               >
                 View
+              </Button>
+              <Button
+                variant="ghost"
+                size="xs"
+                leftIcon={<Copy size={13} />}
+                onClick={() => handleCopyPatientLink(row)}
+                title="Copy Patient Web Link"
+              >
+                Copy Link
               </Button>
               <Button
                 variant="primary"
