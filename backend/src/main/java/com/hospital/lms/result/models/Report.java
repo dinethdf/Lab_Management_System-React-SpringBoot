@@ -29,6 +29,16 @@ public class Report {
     @Column(name = "pdf_path", nullable = false, length = 500)
     private String pdfPath;
 
+    /**
+     * Unique 32-character random hex token for public web link report retrieval.
+     * Allows patients to view their report online without full user credentials.
+     */
+    @Column(name = "share_token", unique = true, length = 64)
+    private String shareToken;
+
+    @Column(name = "share_token_generated_at")
+    private LocalDateTime shareTokenGeneratedAt;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "approved_by", nullable = false)
     private User approvedBy;

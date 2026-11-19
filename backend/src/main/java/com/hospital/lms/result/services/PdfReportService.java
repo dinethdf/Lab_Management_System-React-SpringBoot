@@ -26,7 +26,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.format.DateTimeFormatter;
+import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * PdfReportService — Generates standardized, professional clinical laboratory
@@ -148,6 +150,12 @@ public class PdfReportService {
             report.setPdfPath(targetFile.toString());
             report.setApprovedBy(approver);
             report.setGeneratedAt(testResult.getVerifiedAt() != null ? testResult.getVerifiedAt() : java.time.LocalDateTime.now());
+
+            // Assign unique random token for secure patient web link access
+            if (report.getShareToken() == null) {
+                report.setShareToken(UUID.randomUUID().toString().replace("-", ""));
+                report.setShareTokenGeneratedAt(LocalDateTime.now());
+            }
 
             Report saved = reportRepository.save(report);
             log.info("Official diagnostic report generated: {} at {}", reportNumber, targetFile);

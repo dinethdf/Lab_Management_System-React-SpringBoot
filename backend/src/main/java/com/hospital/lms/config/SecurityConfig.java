@@ -40,6 +40,7 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) // No sessions, only JWT
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/login").permitAll() // Anyone can try to log in
+                .requestMatchers("/public/**", "/api/public/**").permitAll() // Public patient report self-service portal
                 .anyRequest().authenticated() // ALL other endpoints require a valid JWT token
             )
             // Put our custom JWT Bouncer in front of the standard Spring authentication

@@ -33,4 +33,8 @@ public class ReportSummaryDTO {
     private int criticalCount;
 
     private String pdfDownloadUrl;
+
+    // Secure token and public web link for patient self-service retrieval
+    private String shareToken;
+    private String shareLink;
 }

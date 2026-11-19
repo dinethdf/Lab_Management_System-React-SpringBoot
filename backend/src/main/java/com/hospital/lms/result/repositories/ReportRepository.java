@@ -26,6 +26,11 @@ public interface ReportRepository extends JpaRepository<Report, Long> {
     Optional<Report> findByReportNumber(String reportNumber);
 
     /**
+     * Finds a report by its secure share token for public web link access.
+     */
+    Optional<Report> findByShareToken(String shareToken);
+
+    /**
      * Fetches the 20 most recently generated reports.
      */
     List<Report> findTop20ByOrderByGeneratedAtDesc();

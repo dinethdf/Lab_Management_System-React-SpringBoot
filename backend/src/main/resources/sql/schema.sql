@@ -232,18 +232,45 @@ CREATE TABLE IF NOT EXISTS result_values (
 );
 
 CREATE TABLE IF NOT EXISTS reports (
-    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
-    test_result_id  BIGINT NOT NULL UNIQUE,
-    report_number   VARCHAR(100) NOT NULL UNIQUE,
-    pdf_path        VARCHAR(500) NOT NULL,
-    approved_by     BIGINT NOT NULL,
-    generated_at    DATETIME NOT NULL,
-    created_at      DATETIME NOT NULL,
-    updated_at      DATETIME NOT NULL,
-    created_by      BIGINT,
-    updated_by      BIGINT,
+    id                      BIGINT AUTO_INCREMENT PRIMARY KEY,
+    test_result_id          BIGINT NOT NULL UNIQUE,
+    report_number           VARCHAR(100) NOT NULL UNIQUE,
+    pdf_path                VARCHAR(500) NOT NULL,
+    share_token             VARCHAR(64) UNIQUE,
+    share_token_generated_at DATETIME,
+    approved_by             BIGINT NOT NULL,
+    generated_at            DATETIME NOT NULL,
+    created_at              DATETIME NOT NULL,
+    updated_at              DATETIME NOT NULL,
+    created_by              BIGINT,
+    updated_by              BIGINT,
     CONSTRAINT fk_report_test_result FOREIGN KEY (test_result_id) REFERENCES test_results(id),
     CONSTRAINT fk_report_approver    FOREIGN KEY (approved_by)    REFERENCES users(id)
+);
+
+-- 5.1 REPORT ACCESS SESSIONS (Public patient portal verification sessions)
+CREATE TABLE IF NOT EXISTS report_access_sessions (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    report_id       BIGINT       NOT NULL,
+    session_token   VARCHAR(64)  NOT NULL UNIQUE,
+    expires_at      DATETIME     NOT NULL,
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_access_session_report FOREIGN KEY (report_id) REFERENCES reports(id) ON DELETE CASCADE
+);
+
+-- 5.2 REPORT OTP CODES (One-Time Password challenge for patient report portal)
+CREATE TABLE IF NOT EXISTS report_otp_codes (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    report_id       BIGINT       NOT NULL,
+    otp_code        VARCHAR(6)   NOT NULL,
+    generated_at    DATETIME     NOT NULL,
+    expires_at      DATETIME     NOT NULL,
+    is_used         BOOLEAN      NOT NULL DEFAULT FALSE,
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_by      BIGINT,
+    updated_by      BIGINT,
+    CONSTRAINT fk_otp_report FOREIGN KEY (report_id) REFERENCES reports(id) ON DELETE CASCADE
 );
 
 -- ============================================================================

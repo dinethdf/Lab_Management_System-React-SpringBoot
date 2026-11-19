@@ -10,12 +10,15 @@ import com.hospital.lms.order.models.OrderTest;
 import com.hospital.lms.order.models.TestOrder;
 import com.hospital.lms.order.repositories.ContainerRepository;
 import com.hospital.lms.order.repositories.OrderTestRepository;
+import com.hospital.lms.order.repositories.TestOrderRepository;
 import com.hospital.lms.patient.models.Patient;
 import com.hospital.lms.result.dtos.*;
+import com.hospital.lms.result.models.Report;
 import com.hospital.lms.result.models.ResultValue;
 import com.hospital.lms.result.models.TestResult;
 import com.hospital.lms.result.models.TestResult.ResultStatus;
 import com.hospital.lms.result.repositories.TestResultRepository;
+import com.hospital.lms.sms.SmsService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +43,8 @@ public class ResultService {
     private final UserRepository userRepository;
     private final ContainerRepository containerRepository;
     private final PdfReportService pdfReportService;
+    private final TestOrderRepository testOrderRepository;
+    private final SmsService smsService;
 
     @Autowired
     public ResultService(TestResultRepository testResultRepository,
@@ -47,13 +52,36 @@ public class ResultService {
                          TestParameterRepository parameterRepository,
                          UserRepository userRepository,
                          ContainerRepository containerRepository,
-                         PdfReportService pdfReportService) {
+                         PdfReportService pdfReportService,
+                         TestOrderRepository testOrderRepository,
+                         SmsService smsService) {
         this.testResultRepository = testResultRepository;
         this.orderTestRepository = orderTestRepository;
         this.parameterRepository = parameterRepository;
         this.userRepository = userRepository;
         this.containerRepository = containerRepository;
         this.pdfReportService = pdfReportService;
+        this.testOrderRepository = testOrderRepository;
+        this.smsService = smsService;
+    }
+
+    public ResultService(TestResultRepository testResultRepository,
+                         OrderTestRepository orderTestRepository,
+                         TestParameterRepository parameterRepository,
+                         UserRepository userRepository,
+                         ContainerRepository containerRepository,
+                         PdfReportService pdfReportService,
+                         TestOrderRepository testOrderRepository) {
+        this(testResultRepository, orderTestRepository, parameterRepository, userRepository, containerRepository, pdfReportService, testOrderRepository, null);
+    }
+
+    public ResultService(TestResultRepository testResultRepository,
+                         OrderTestRepository orderTestRepository,
+                         TestParameterRepository parameterRepository,
+                         UserRepository userRepository,
+                         ContainerRepository containerRepository,
+                         PdfReportService pdfReportService) {
+        this(testResultRepository, orderTestRepository, parameterRepository, userRepository, containerRepository, pdfReportService, null);
     }
 
     public ResultService(TestResultRepository testResultRepository,
@@ -61,14 +89,14 @@ public class ResultService {
                          TestParameterRepository parameterRepository,
                          UserRepository userRepository,
                          ContainerRepository containerRepository) {
-        this(testResultRepository, orderTestRepository, parameterRepository, userRepository, containerRepository, null);
+        this(testResultRepository, orderTestRepository, parameterRepository, userRepository, containerRepository, null, null);
     }
 
     public ResultService(TestResultRepository testResultRepository,
                          OrderTestRepository orderTestRepository,
                          TestParameterRepository parameterRepository,
                          UserRepository userRepository) {
-        this(testResultRepository, orderTestRepository, parameterRepository, userRepository, null, null);
+        this(testResultRepository, orderTestRepository, parameterRepository, userRepository, null, null, null);
     }
 
     /**
@@ -115,14 +143,19 @@ public class ResultService {
             String slipCode = searchCode.toUpperCase().startsWith("PS-")
                     ? "LS-" + searchCode.substring(3)
                     : searchCode;
-            Optional<TestOrder> orderOpt = testOrderRepository.findByLabSlipBarcode(slipCode);
-            if (orderOpt.isPresent()) {
-                TestOrder order = orderOpt.get();
-                if (order.getOrderTests() != null && !order.getOrderTests().isEmpty()) {
-                    orderTest = order.getOrderTests().stream()
-                            .filter(ot -> ot.getTestResult() == null || ot.getTestResult().getStatus() == TestResult.ResultStatus.DRAFT)
-                            .findFirst()
-                            .orElse(order.getOrderTests().get(0));
+            if (testOrderRepository != null) {
+                Optional<TestOrder> orderOpt = testOrderRepository.findByLabSlipBarcode(slipCode);
+                if (orderOpt.isPresent()) {
+                    TestOrder order = orderOpt.get();
+                    if (order.getOrderTests() != null && !order.getOrderTests().isEmpty()) {
+                        orderTest = order.getOrderTests().stream()
+                                .filter(ot -> {
+                                    Optional<TestResult> tr = testResultRepository.findByOrderTestId(ot.getId());
+                                    return tr.isEmpty() || tr.get().getStatus() == TestResult.ResultStatus.DRAFT;
+                                })
+                                .findFirst()
+                                .orElse(order.getOrderTests().get(0));
+                    }
                 }
             }
         }
@@ -145,20 +178,23 @@ public class ResultService {
 
         // Populate sibling tests under the same order for 1-click test switching
         TestOrder parentOrder = orderTest.getTestOrder();
-        form.setLabSlipBarcode(parentOrder.getLabSlipBarcode());
-        if (parentOrder.getOrderTests() != null && parentOrder.getOrderTests().size() > 1) {
-            List<ResultFormDataDTO.SiblingTestDTO> siblings = parentOrder.getOrderTests().stream()
-                    .map(ot -> {
-                        ResultFormDataDTO.SiblingTestDTO sib = new ResultFormDataDTO.SiblingTestDTO();
-                        sib.setOrderTestId(ot.getId());
-                        sib.setTestSampleCode(ot.getTestSampleCode());
-                        sib.setTestName(ot.getTest().getName());
-                        sib.setTestCode(ot.getTest().getCode());
-                        sib.setStatus(ot.getTestResult() != null ? ot.getTestResult().getStatus().name() : "PENDING_ENTRY");
-                        return sib;
-                    })
-                    .collect(Collectors.toList());
-            form.setSiblingTests(siblings);
+        if (parentOrder != null) {
+            form.setLabSlipBarcode(parentOrder.getLabSlipBarcode());
+            if (parentOrder.getOrderTests() != null && parentOrder.getOrderTests().size() > 1) {
+                List<ResultFormDataDTO.SiblingTestDTO> siblings = parentOrder.getOrderTests().stream()
+                        .map(ot -> {
+                            ResultFormDataDTO.SiblingTestDTO sib = new ResultFormDataDTO.SiblingTestDTO();
+                            sib.setOrderTestId(ot.getId());
+                            sib.setTestSampleCode(ot.getTestSampleCode());
+                            sib.setTestName(ot.getTest().getName());
+                            sib.setTestCode(ot.getTest().getCode());
+                            Optional<TestResult> tr = testResultRepository.findByOrderTestId(ot.getId());
+                            sib.setStatus(tr.isPresent() ? tr.get().getStatus().name() : "PENDING_ENTRY");
+                            return sib;
+                        })
+                        .collect(Collectors.toList());
+                form.setSiblingTests(siblings);
+            }
         }
 
         form.setPatientId(patient.getId());
@@ -454,7 +490,31 @@ public class ResultService {
         // Auto-generate official diagnostic PDF report (FR-7.1 / E3)
         if (pdfReportService != null) {
             try {
-                pdfReportService.generateAndSaveReport(saved, seniorTech);
+                Report savedReport = pdfReportService.generateAndSaveReport(saved, seniorTech);
+
+                // Auto-dispatch SMS notification with secure report link to patient (TASK-013)
+                if (smsService != null && savedReport != null && savedReport.getShareToken() != null) {
+                    try {
+                        Patient patient = (result.getOrderTest() != null && result.getOrderTest().getTestOrder() != null)
+                                ? result.getOrderTest().getTestOrder().getPatient()
+                                : null;
+                        String testName = (result.getOrderTest() != null && result.getOrderTest().getTest() != null)
+                                ? result.getOrderTest().getTest().getName()
+                                : "Diagnostic";
+
+                        if (patient != null && patient.getContactNumber() != null) {
+                            smsService.sendReportReadySms(
+                                    patient.getContactNumber(),
+                                    patient.getFullName(),
+                                    testName,
+                                    savedReport.getShareToken()
+                            );
+                        }
+                    } catch (Exception smsEx) {
+                        org.slf4j.LoggerFactory.getLogger(ResultService.class)
+                                .warn("Non-fatal SMS dispatch error during result approval: {}", smsEx.getMessage());
+                    }
+                }
             } catch (Exception e) {
                 org.slf4j.LoggerFactory.getLogger(ResultService.class)
                         .warn("Diagnostic report PDF generation failed during approval: {}", e.getMessage());

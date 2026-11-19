@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 import java.io.File;
 import java.nio.file.Files;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
@@ -199,6 +200,17 @@ public class ReportController {
         dto.setId(r.getId());
         dto.setReportNumber(r.getReportNumber());
         dto.setGeneratedAt(r.getGeneratedAt());
+
+        // Ensure shareToken is present (auto-heal older records if needed)
+        if (r.getShareToken() == null) {
+            r.setShareToken(java.util.UUID.randomUUID().toString().replace("-", ""));
+            r.setShareTokenGeneratedAt(LocalDateTime.now());
+            try {
+                reportRepository.save(r);
+            } catch (Exception ignored) {}
+        }
+        dto.setShareToken(r.getShareToken());
+        dto.setShareLink("http://localhost:3000/report/" + r.getShareToken());
 
         if (r.getApprovedBy() != null) {
             dto.setApprovedById(r.getApprovedBy().getId());
