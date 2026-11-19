@@ -19,7 +19,12 @@ import {
   AlertTriangle,
   Printer,
   User,
-  Award
+  Award,
+  Smartphone,
+  Send,
+  KeyRound,
+  RotateCcw,
+  ArrowLeft
 } from 'lucide-react';
 
 /**
@@ -29,16 +34,16 @@ import {
  * 1. Visual & Interactive: Displays full diagnostic laboratory results directly in the browser.
  * 2. Multi-channel: Provides both in-browser interactive report viewing and official PDF viewing/downloading.
  * 3. Mobile & Desktop Responsive: Optimized for 360px mobile screens through 4K displays.
- * 4. Privacy-first: Authenticates patient identity via last 4 digits of registered phone number.
+ * 4. Multi-Factor Privacy: Authenticates patient identity via real 6-digit SMS OTP (with 4-digit mobile PIN fallback).
  */
 export default function PatientReportPage() {
   const { shareToken } = useParams();
 
-  // Screen states: 'LOADING' | 'PREVIEW' | 'VERIFIED' | 'ERROR'
+  // Screen states: 'LOADING' | 'PREVIEW' | 'OTP_SENT' | 'VERIFIED' | 'ERROR'
   const [screenState, setScreenState] = useState('LOADING');
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Report preview metadata (loaded before PIN verification)
+  // Report preview metadata (loaded before verification)
   const [reportInfo, setReportInfo] = useState({
     reportNumber: '',
     testName: '',
@@ -48,11 +53,21 @@ export default function PatientReportPage() {
     maskedMobile: '****'
   });
 
-  // 4-box PIN state (array of 4 single character strings)
+  // 6-box SMS OTP state
+  const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
+  const otpInputRefs = [useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null)];
+  const [isRequestingOtp, setIsRequestingOtp] = useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [otpCountdown, setOtpCountdown] = useState(300); // 5 minutes
+  const [resendCooldown, setResendCooldown] = useState(0); // 45 seconds
+  const [otpNotice, setOtpNotice] = useState('');
+
+  // 4-box PIN fallback state
+  const [usePinFallback, setUsePinFallback] = useState(false);
   const [pinDigits, setPinDigits] = useState(['', '', '', '']);
   const pinInputRefs = [useRef(null), useRef(null), useRef(null), useRef(null)];
 
-  // Verification & Session state
+  // Common verification & Session state
   const [isVerifying, setIsVerifying] = useState(false);
   const [verifyError, setVerifyError] = useState('');
   const [sessionData, setSessionData] = useState(null); // Full report details
@@ -110,11 +125,10 @@ export default function PatientReportPage() {
       setSecondsRemaining((prev) => {
         if (prev <= 1) {
           clearInterval(interval);
-          // Session expired: transition back to preview
           sessionStorage.removeItem(`patient_report_session_${shareToken}`);
           setSessionData(null);
           setScreenState('PREVIEW');
-          setVerifyError('Your 30-minute viewing session has expired. Please re-enter your PIN.');
+          setVerifyError('Your 30-minute viewing session has expired. Please verify again.');
           return 0;
         }
         return prev - 1;
@@ -124,29 +138,143 @@ export default function PatientReportPage() {
     return () => clearInterval(interval);
   }, [screenState, sessionData, shareToken]);
 
-  // Handle individual digit change in the 4-box PIN input
-  const handleDigitChange = (index, value) => {
+  // 3. Countdown timer for 5-min OTP expiry & 45s resend cooldown
+  useEffect(() => {
+    if (screenState !== 'OTP_SENT') return;
+
+    const interval = setInterval(() => {
+      setOtpCountdown((prev) => (prev > 0 ? prev - 1 : 0));
+      setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [screenState]);
+
+  // -------------------------------------------------------------
+  // OTP Handlers (Primary Flow)
+  // -------------------------------------------------------------
+
+  // Request SMS OTP from backend
+  const handleRequestOtp = async () => {
+    try {
+      setIsRequestingOtp(true);
+      setVerifyError('');
+      setOtpNotice('');
+
+      const res = await axios.post(`${API_URLS.BASE}/public/report/${shareToken}/request-otp`);
+      
+      setOtpDigits(['', '', '', '', '', '']);
+      setOtpCountdown(res.data.expiresInSeconds || 300);
+      setResendCooldown(45);
+      setOtpNotice(res.data.message || 'Verification code sent to your mobile.');
+      setScreenState('OTP_SENT');
+
+      setTimeout(() => {
+        otpInputRefs[0].current?.focus();
+      }, 150);
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Could not send verification SMS. Please try again.';
+      setVerifyError(msg);
+    } finally {
+      setIsRequestingOtp(false);
+    }
+  };
+
+  // Handle digit change in 6-box OTP input
+  const handleOtpDigitChange = (index, value) => {
+    const cleaned = value.replace(/[^0-9]/g, '');
+    const newDigits = [...otpDigits];
+
+    if (cleaned.length > 0) {
+      newDigits[index] = cleaned[cleaned.length - 1];
+      setOtpDigits(newDigits);
+      setVerifyError('');
+
+      if (index < 5) {
+        otpInputRefs[index + 1].current?.focus();
+      }
+    } else {
+      newDigits[index] = '';
+      setOtpDigits(newDigits);
+    }
+  };
+
+  const handleOtpKeyDown = (index, e) => {
+    if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
+      otpInputRefs[index - 1].current?.focus();
+    } else if (e.key === 'Enter') {
+      const fullOtp = otpDigits.join('');
+      if (fullOtp.length === 6) {
+        submitOtpVerification();
+      }
+    }
+  };
+
+  const handleOtpPaste = (e) => {
+    e.preventDefault();
+    const pasteData = e.clipboardData.getData('text').replace(/[^0-9]/g, '');
+    if (pasteData.length >= 6) {
+      const digits = pasteData.slice(0, 6).split('');
+      setOtpDigits(digits);
+      otpInputRefs[5].current?.focus();
+      setVerifyError('');
+    }
+  };
+
+  // Submit 6-digit OTP verification
+  const submitOtpVerification = async () => {
+    const fullOtp = otpDigits.join('');
+    if (fullOtp.length !== 6) {
+      setVerifyError('Please enter all 6 digits of the verification code.');
+      return;
+    }
+
+    try {
+      setIsVerifyingOtp(true);
+      setVerifyError('');
+
+      const res = await axios.post(`${API_URLS.BASE}/public/report/${shareToken}/verify-otp`, {
+        otp: fullOtp
+      });
+
+      const data = res.data;
+      sessionStorage.setItem(`patient_report_session_${shareToken}`, JSON.stringify(data));
+      setSessionData(data);
+      setSecondsRemaining((data.expiresInMinutes || 30) * 60);
+      setScreenState('VERIFIED');
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Incorrect verification code. Please check your SMS and try again.';
+      setVerifyError(msg);
+      setOtpDigits(['', '', '', '', '', '']);
+      otpInputRefs[0].current?.focus();
+    } finally {
+      setIsVerifyingOtp(false);
+    }
+  };
+
+  // -------------------------------------------------------------
+  // PIN Handlers (Fallback Flow)
+  // -------------------------------------------------------------
+
+  const handlePinDigitChange = (index, value) => {
     const cleaned = value.replace(/[^0-9]/g, '');
     const newDigits = [...pinDigits];
 
     if (cleaned.length > 0) {
-      newDigits[index] = cleaned[cleaned.length - 1]; // take latest typed digit
+      newDigits[index] = cleaned[cleaned.length - 1];
       setPinDigits(newDigits);
       setVerifyError('');
 
-      // Auto-advance to next input box if available
       if (index < 3) {
         pinInputRefs[index + 1].current?.focus();
       }
     } else {
-      // User cleared the box
       newDigits[index] = '';
       setPinDigits(newDigits);
     }
   };
 
-  // Handle keyboard events like Backspace for smooth cursor movement
-  const handleKeyDown = (index, e) => {
+  const handlePinKeyDown = (index, e) => {
     if (e.key === 'Backspace' && !pinDigits[index] && index > 0) {
       pinInputRefs[index - 1].current?.focus();
     } else if (e.key === 'Enter') {
@@ -157,8 +285,7 @@ export default function PatientReportPage() {
     }
   };
 
-  // Handle paste event (e.g., patient pastes "4567" into any box)
-  const handlePaste = (e) => {
+  const handlePinPaste = (e) => {
     e.preventDefault();
     const pasteData = e.clipboardData.getData('text').replace(/[^0-9]/g, '');
     if (pasteData.length >= 4) {
@@ -169,7 +296,6 @@ export default function PatientReportPage() {
     }
   };
 
-  // 3. Submit PIN verification to backend
   const submitPinVerification = async () => {
     const fullPin = pinDigits.join('');
     if (fullPin.length !== 4) {
@@ -185,7 +311,6 @@ export default function PatientReportPage() {
         pin: fullPin
       });
 
-      // Verification successful! Cache session and show verified results
       const data = response.data;
       sessionStorage.setItem(`patient_report_session_${shareToken}`, JSON.stringify(data));
       setSessionData(data);
@@ -310,7 +435,7 @@ export default function PatientReportPage() {
         )}
 
         {/* ======================================================== */}
-        {/* STATE C: STEP 1 — IDENTITY PIN VERIFICATION              */}
+        {/* STATE C: STEP 1 — IDENTITY VERIFICATION & OTP DISPATCH   */}
         {/* ======================================================== */}
         {screenState === 'PREVIEW' && (
           <div className="bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
@@ -330,44 +455,211 @@ export default function PatientReportPage() {
             </div>
 
             <div className="p-6 sm:p-8">
-              {/* Privacy Explanation */}
-              <div className="text-center mb-6">
-                <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-blue-50 text-blue-600 mb-3">
-                  <Lock className="w-5 h-5" />
-                </div>
-                <h3 className="text-base font-semibold text-slate-800">
-                  Verify Identity to Access
-                </h3>
-                <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                  For your medical privacy, enter the last 4 digits of the mobile number registered with your test order.
-                </p>
+              {!usePinFallback ? (
+                /* Primary Option: Live SMS OTP */
+                <div>
+                  <div className="text-center mb-6">
+                    <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 border border-blue-100 mb-3 shadow-sm">
+                      <Smartphone className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-base sm:text-lg font-bold text-slate-800">
+                      SMS Two-Factor Verification
+                    </h3>
+                    <p className="text-xs sm:text-sm text-slate-500 mt-1.5 leading-relaxed">
+                      To protect your personal clinical data, we will send a secure 6-digit One-Time Password (OTP) via SMS to your phone.
+                    </p>
 
-                {/* Masked Mobile Hint Pill */}
-                <div className="inline-flex items-center gap-2 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 mt-3">
-                  <Phone className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Registered Mobile: <strong className="font-mono text-slate-900 tracking-wider">{reportInfo.maskedMobile}</strong></span>
+                    {/* Masked Mobile Pill */}
+                    <div className="inline-flex items-center gap-2 bg-slate-50 border border-slate-200 px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-700 mt-4 shadow-sm">
+                      <Phone className="w-3.5 h-3.5 text-blue-500" />
+                      <span>Registered Mobile: <strong className="font-mono text-slate-900 tracking-wider">{reportInfo.maskedMobile}</strong></span>
+                    </div>
+                  </div>
+
+                  {/* Error banner if requesting OTP failed */}
+                  {verifyError && (
+                    <div className="mb-5 flex items-center justify-center gap-1.5 text-xs font-medium text-rose-600 bg-rose-50 border border-rose-200 rounded-xl p-3">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{verifyError}</span>
+                    </div>
+                  )}
+
+                  {/* Send OTP Primary Button */}
+                  <button
+                    onClick={handleRequestOtp}
+                    disabled={isRequestingOtp}
+                    className="w-full py-3.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-sm shadow-md shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                  >
+                    {isRequestingOtp ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Sending SMS Code...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        <span>Send Verification Code via SMS</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Fallback Option Toggle */}
+                  <div className="mt-5 pt-4 border-t border-slate-100 text-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUsePinFallback(true);
+                        setVerifyError('');
+                      }}
+                      className="text-xs text-slate-500 hover:text-blue-600 font-medium inline-flex items-center gap-1.5 transition-colors"
+                    >
+                      <KeyRound className="w-3.5 h-3.5" />
+                      <span>No mobile signal? Verify with 4-digit PIN instead</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Fallback Option: 4-digit mobile PIN */
+                <div>
+                  <div className="text-center mb-6">
+                    <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-slate-100 text-slate-600 mb-3">
+                      <Lock className="w-5 h-5" />
+                    </div>
+                    <h3 className="text-base font-semibold text-slate-800">
+                      Enter Mobile PIN
+                    </h3>
+                    <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                      Enter the last 4 digits of your registered mobile number: <strong className="font-mono text-slate-800">{reportInfo.maskedMobile}</strong>
+                    </p>
+                  </div>
+
+                  {/* 4-Box PIN Input Keypad */}
+                  <div className="mb-6">
+                    <div className="flex justify-center gap-3 sm:gap-4" onPaste={handlePinPaste}>
+                      {pinDigits.map((digit, index) => (
+                        <input
+                          key={index}
+                          ref={pinInputRefs[index]}
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          maxLength={1}
+                          value={digit}
+                          onChange={(e) => handlePinDigitChange(index, e.target.value)}
+                          onKeyDown={(e) => handlePinKeyDown(index, e)}
+                          autoFocus={index === 0}
+                          className={`w-12 h-14 sm:w-14 sm:h-16 text-center text-2xl font-bold font-mono rounded-xl border-2 transition-all outline-none ${
+                            digit
+                              ? 'border-blue-600 bg-blue-50/30 text-blue-900 shadow-sm'
+                              : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-100'
+                          }`}
+                        />
+                      ))}
+                    </div>
+
+                    {verifyError && (
+                      <div className="mt-3 flex items-center justify-center gap-1.5 text-xs font-medium text-rose-600 bg-rose-50 border border-rose-200 rounded-lg p-2.5">
+                        <AlertCircle className="w-4 h-4 shrink-0" />
+                        <span>{verifyError}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={submitPinVerification}
+                    disabled={isVerifying || pinDigits.some(d => !d)}
+                    className="w-full py-3.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-sm shadow-md shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                  >
+                    {isVerifying ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Verifying...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="w-4 h-4" />
+                        <span>Verify & Open Report</span>
+                      </>
+                    )}
+                  </button>
+
+                  <div className="mt-4 text-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUsePinFallback(false);
+                        setVerifyError('');
+                      }}
+                      className="text-xs text-blue-600 hover:underline font-medium inline-flex items-center gap-1"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Back to SMS OTP verification</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Security Footnote */}
+              <p className="text-[11px] text-slate-400 text-center mt-5 leading-normal">
+                🔒 Protected by 256-bit SSL encryption. This medical portal is private to the registered patient.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* STATE C.2: STEP 2 — 6-DIGIT SMS OTP ENTRY               */}
+        {/* ======================================================== */}
+        {screenState === 'OTP_SENT' && (
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
+            
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white text-center">
+              <div className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-semibold tracking-wide uppercase mb-2">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
+                Code Dispatched
+              </div>
+              <h2 className="text-xl font-bold tracking-tight">
+                {reportInfo.testName || 'Diagnostic Report'}
+              </h2>
+              <p className="text-xs text-blue-100 mt-1">
+                Report No: <span className="font-mono font-medium text-white">{reportInfo.reportNumber}</span>
+              </p>
+            </div>
+
+            <div className="p-6 sm:p-8">
+              <div className="text-center mb-6">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-100 mb-3 shadow-sm">
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <h3 className="text-base sm:text-lg font-bold text-slate-800">
+                  Enter 6-Digit SMS Code
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-500 mt-1 leading-relaxed">
+                  We sent a 6-digit verification code to:
+                </p>
+                <div className="inline-flex items-center gap-1.5 bg-slate-100 border border-slate-200 px-3 py-1 rounded-lg text-xs font-bold text-slate-800 font-mono mt-1.5">
+                  <Phone className="w-3 h-3 text-slate-400" />
+                  <span>{reportInfo.maskedMobile}</span>
                 </div>
               </div>
 
-              {/* 4-Box PIN Input Keypad */}
+              {/* 6-Box OTP Input Keypad */}
               <div className="mb-6">
-                <label className="block text-center text-xs font-semibold text-slate-600 uppercase tracking-wider mb-3">
-                  Enter 4-Digit Mobile PIN
-                </label>
-                <div className="flex justify-center gap-3 sm:gap-4" onPaste={handlePaste}>
-                  {pinDigits.map((digit, index) => (
+                <div className="flex justify-center gap-2 sm:gap-2.5" onPaste={handleOtpPaste}>
+                  {otpDigits.map((digit, index) => (
                     <input
                       key={index}
-                      ref={pinInputRefs[index]}
+                      ref={otpInputRefs[index]}
                       type="text"
                       inputMode="numeric"
                       pattern="[0-9]*"
                       maxLength={1}
                       value={digit}
-                      onChange={(e) => handleDigitChange(index, e.target.value)}
-                      onKeyDown={(e) => handleKeyDown(index, e)}
+                      onChange={(e) => handleOtpDigitChange(index, e.target.value)}
+                      onKeyDown={(e) => handleOtpKeyDown(index, e)}
                       autoFocus={index === 0}
-                      className={`w-12 h-14 sm:w-14 sm:h-16 text-center text-2xl font-bold font-mono rounded-xl border-2 transition-all outline-none ${
+                      className={`w-10 h-13 sm:w-12 sm:h-15 text-center text-xl sm:text-2xl font-bold font-mono rounded-xl border-2 transition-all outline-none ${
                         digit
                           ? 'border-blue-600 bg-blue-50/30 text-blue-900 shadow-sm'
                           : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-100'
@@ -376,37 +668,79 @@ export default function PatientReportPage() {
                   ))}
                 </div>
 
-                {/* Error Message if PIN is incorrect */}
+                {/* Expiry Countdown Timer */}
+                <div className="flex items-center justify-center gap-1.5 text-xs text-slate-500 mt-3.5">
+                  <Clock className={`w-3.5 h-3.5 ${otpCountdown < 60 ? 'text-rose-500 animate-pulse' : 'text-slate-400'}`} />
+                  <span>
+                    Code expires in{' '}
+                    <strong className={`font-mono ${otpCountdown < 60 ? 'text-rose-600' : 'text-slate-700'}`}>
+                      {formatTimeRemaining(otpCountdown)}
+                    </strong>
+                  </span>
+                </div>
+
+                {/* Error Banner */}
                 {verifyError && (
-                  <div className="mt-3 flex items-center justify-center gap-1.5 text-xs font-medium text-rose-600 bg-rose-50 border border-rose-200 rounded-lg p-2.5">
+                  <div className="mt-3 flex items-center justify-center gap-1.5 text-xs font-medium text-rose-600 bg-rose-50 border border-rose-200 rounded-xl p-2.5">
                     <AlertCircle className="w-4 h-4 shrink-0" />
                     <span>{verifyError}</span>
                   </div>
                 )}
               </div>
 
-              {/* Verify & View Report Action Button */}
+              {/* Verify & Open Report Action */}
               <button
-                onClick={submitPinVerification}
-                disabled={isVerifying || pinDigits.some(d => !d)}
+                onClick={submitOtpVerification}
+                disabled={isVerifyingOtp || otpDigits.some(d => !d) || otpCountdown === 0}
                 className="w-full py-3.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-sm shadow-md shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
               >
-                {isVerifying ? (
+                {isVerifyingOtp ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Verifying Identity...</span>
+                    <span>Verifying Code...</span>
                   </>
                 ) : (
                   <>
                     <ShieldCheck className="w-4 h-4" />
-                    <span>Verify & View Report</span>
+                    <span>Verify & Open Report</span>
                   </>
                 )}
               </button>
 
+              {/* Resend OTP & Navigation Actions */}
+              <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScreenState('PREVIEW');
+                    setVerifyError('');
+                  }}
+                  className="text-slate-500 hover:text-slate-800 inline-flex items-center gap-1 font-medium transition-colors"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Back</span>
+                </button>
+
+                {resendCooldown > 0 ? (
+                  <span className="text-slate-400 font-medium">
+                    Resend code in <strong className="font-mono text-slate-600">{resendCooldown}s</strong>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleRequestOtp}
+                    disabled={isRequestingOtp}
+                    className="text-blue-600 hover:text-blue-800 font-semibold inline-flex items-center gap-1 transition-colors"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Resend SMS Code</span>
+                  </button>
+                )}
+              </div>
+
               {/* Security Footnote */}
               <p className="text-[11px] text-slate-400 text-center mt-5 leading-normal">
-                🔒 Protected by 256-bit SSL encryption. This link is private to the registered patient.
+                🔒 Protected by 256-bit SSL encryption.
               </p>
             </div>
           </div>
