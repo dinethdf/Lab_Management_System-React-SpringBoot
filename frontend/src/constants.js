@@ -29,6 +29,7 @@ export const API_URLS = {
 
   // --- Dashboard Module ---
   DASHBOARD_ADMIN_STATS: '/dashboard/admin-stats', // GET live admin operational metrics
+  DASHBOARD_ANALYTICS: '/dashboard/analytics',     // GET live analytics datasets with ?startDate=&endDate=
 
   // --- Reports Module (FR-7 / E3) ---
   REPORTS: '/reports',

@@ -24,6 +24,7 @@ import {
   Layers,
   AlertTriangle,
   UserPlus,
+  BarChart3,
 } from 'lucide-react';
 import dashboardService from '../../services/dashboardService';
 
@@ -380,6 +381,15 @@ const AdminDashboardPage = () => {
                   onClick={() => navigate('/verification-queue')}
                 >
                   Verification Queue
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="justify-start text-xs font-semibold"
+                  leftIcon={<BarChart3 size={15} className="text-emerald-600" />}
+                  onClick={() => navigate('/analytics')}
+                >
+                  Analytics & Reports
                 </Button>
               </div>
             </div>

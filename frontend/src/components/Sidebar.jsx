@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LayoutDashboard, Users, FlaskConical, Droplet, FileText, Settings, ChevronDown, ChevronRight, Menu, Palette, CheckCircle2, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, Users, FlaskConical, Droplet, FileText, Settings, ChevronDown, ChevronRight, Menu, Palette, CheckCircle2, ClipboardList, BarChart3 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 const Sidebar = () => {
@@ -10,6 +10,7 @@ const Sidebar = () => {
   // Admin menu: Full system management
   const adminMenu = [
     { name: 'Dashboard', icon: LayoutDashboard, path: '/' },
+    { name: 'Analytics', icon: BarChart3, path: '/analytics' },
     { name: 'Staff Management', icon: Users, path: '/admin/users' },
     { name: 'Test Catalog', icon: FlaskConical, path: '/tests' },
     { name: 'Reception Desk', icon: Users, path: '/reception' },

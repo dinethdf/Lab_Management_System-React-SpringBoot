@@ -477,7 +477,7 @@ export default function PatientReportPage() {
                       </div>
                       <div className="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-200/80 px-3 py-1.5 rounded-xl text-xs font-medium text-emerald-800 shadow-sm">
                         <Clock className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Downloadable for 30 Days</span>
+                        <span>Downloadable for {reportInfo.validityDays || 20} Days</span>
                       </div>
                     </div>
                   </div>

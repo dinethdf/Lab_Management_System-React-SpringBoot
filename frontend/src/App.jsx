@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 
 // Role-based Page Imports
 import { LoginPage, ChangePasswordPage } from './pages/auth';
-import { AdminUserManagementPage, TestCatalogPage } from './pages/admin';
+import { AdminUserManagementPage, TestCatalogPage, AdminAnalyticsPage } from './pages/admin';
 import { ReceptionPage, ResultEntryPage, PatientHistoryPage, SampleCollectionPage, MyResultsPage } from './pages/technician';
 import { VerificationQueuePage } from './pages/senior-tech';
 import { DashboardPage, ComponentShowcasePage } from './pages/shared';
@@ -81,6 +81,22 @@ function App() {
           element={
             <PrivateRoute requiredRole="ADMIN">
               <TestCatalogPage />
+            </PrivateRoute>
+          } 
+        />
+        <Route 
+          path="/analytics" 
+          element={
+            <PrivateRoute requiredRole="ADMIN">
+              <AdminAnalyticsPage />
+            </PrivateRoute>
+          } 
+        />
+        <Route 
+          path="/admin/analytics" 
+          element={
+            <PrivateRoute requiredRole="ADMIN">
+              <AdminAnalyticsPage />
             </PrivateRoute>
           } 
         />

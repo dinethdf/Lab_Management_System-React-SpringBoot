@@ -26,6 +26,24 @@ export const dashboardService = {
     const response = await api.get(API_URLS.DASHBOARD_ADMIN_STATS);
     return response.data;
   },
+
+  /**
+   * Retrieves laboratory analytics datasets for a specified date range (or defaults to last 7 days):
+   * - Summary cards (total tests, completed, pending, average TAT)
+   * - Daily test volume (bar chart dataset)
+   * - Tests by category (pie chart dataset)
+   * - Turnaround time trend (line chart dataset)
+   *
+   * @param {string} [startDate] - Start date in 'YYYY-MM-DD' format
+   * @param {string} [endDate]   - End date in 'YYYY-MM-DD' format
+   */
+  getAnalyticsStats: async (startDate, endDate) => {
+    const params = {};
+    if (startDate) params.startDate = startDate;
+    if (endDate) params.endDate = endDate;
+    const response = await api.get(API_URLS.DASHBOARD_ANALYTICS, { params });
+    return response.data;
+  },
 };
 
 export default dashboardService;
