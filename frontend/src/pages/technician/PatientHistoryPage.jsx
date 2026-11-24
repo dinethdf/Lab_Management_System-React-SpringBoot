@@ -159,7 +159,7 @@ const PatientHistoryPage = () => {
     availableTests.forEach((t) => {
       if (t.category) categorySet.add(t.category);
     });
-    return ['ALL', ...Array.from(categorySet)];
+    return ['ALL', ...Array.from(categorySet).sort()];
   }, [availableTests]);
 
   const filteredTests = useMemo(() => {
@@ -187,11 +187,19 @@ const PatientHistoryPage = () => {
     return availableTests.filter((t) => selectedTestIds.includes(t.id));
   }, [availableTests, selectedTestIds]);
 
-  // Open allocation modal and reset search
+  // Open allocation modal and reset search & category filters
   const handleOpenAllocationModal = () => {
     setTestSearch('');
     setSelectedCategory('ALL');
     setAllocationModalOpen(true);
+  };
+
+  // Close allocation modal and reset all selection & filter states
+  const handleCloseAllocationModal = () => {
+    setAllocationModalOpen(false);
+    setSelectedTestIds([]);
+    setTestSearch('');
+    setSelectedCategory('ALL');
   };
 
   // ----------------------------------------------------
@@ -214,9 +222,7 @@ const PatientHistoryPage = () => {
       const newOrder = res.data;
 
       // Close allocation modal and reset selection
-      setAllocationModalOpen(false);
-      setSelectedTestIds([]);
-      setTestSearch('');
+      handleCloseAllocationModal();
 
       // Open printable dual slip preview
       setCreatedOrder(newOrder);
@@ -641,7 +647,7 @@ const PatientHistoryPage = () => {
         {/* ======================================================== */}
         <Modal
           isOpen={allocationModalOpen}
-          onClose={() => setAllocationModalOpen(false)}
+          onClose={handleCloseAllocationModal}
           title="Allocate Diagnostic Tests"
           size="xl"
           footer={
@@ -660,7 +666,7 @@ const PatientHistoryPage = () => {
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => setAllocationModalOpen(false)}
+                  onClick={handleCloseAllocationModal}
                 >
                   Cancel
                 </Button>
@@ -740,7 +746,12 @@ const PatientHistoryPage = () => {
               </div>
             ) : filteredTests.length === 0 ? (
               <div className="py-12 text-center text-xs text-gray-500 flex flex-col items-center gap-2">
-                <p>No tests match your filter "{testSearch}".</p>
+                <p>
+                  No diagnostic tests found matching{' '}
+                  {testSearch ? `"${testSearch}"` : ''}
+                  {testSearch && selectedCategory !== 'ALL' ? ' in ' : ''}
+                  {selectedCategory !== 'ALL' ? `"${selectedCategory}" category` : ''}.
+                </p>
                 <Button
                   variant="secondary"
                   size="sm"

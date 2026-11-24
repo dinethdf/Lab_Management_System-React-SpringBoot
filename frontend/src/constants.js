@@ -35,6 +35,11 @@ export const API_URLS = {
   REPORTS_BY_RESULT: '/reports/result',
   REPORTS_BY_BARCODE: '/reports/by-barcode',
   REPORTS_RECENT: '/reports/recent',
+
+  // --- Notifications Module (FR-8.3, FR-8.6) ---
+  NOTIFICATIONS: '/notifications',
+  NOTIFICATIONS_UNREAD_COUNT: '/notifications/unread-count',
+  NOTIFICATIONS_READ_ALL: '/notifications/read-all',
 };
 
 // All role names used for permission checks in the UI

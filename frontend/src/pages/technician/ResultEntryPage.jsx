@@ -31,6 +31,7 @@ const ResultEntryPage = () => {
   const [paramValues, setParamValues] = useState({});
   const [notes, setNotes] = useState('');
   const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [criticalAlert, setCriticalAlert] = useState(false);
 
   // Barcode scan handler
   const handleScan = async (scannedCode) => {
@@ -54,6 +55,19 @@ const ResultEntryPage = () => {
         });
       }
       setParamValues(initialValues);
+
+      // Detect if any loaded values are critical (FR-8.3)
+      const hasInitialCritical = data.parameters?.some((p) => {
+        if (p.isCritical) return true;
+        if (p.currentNumericValue !== null && p.currentNumericValue !== undefined && p.currentNumericValue !== '') {
+          const num = Number(p.currentNumericValue);
+          if (p.criticalLow !== null && num < p.criticalLow) return true;
+          if (p.criticalHigh !== null && num > p.criticalHigh) return true;
+        }
+        return false;
+      });
+      setCriticalAlert(Boolean(hasInitialCritical));
+
       showSuccess(`Loaded test form for ${data.testName} (${data.patientName})`);
     } catch (err) {
       console.error('Scan error:', err);
@@ -134,7 +148,17 @@ const ResultEntryPage = () => {
       };
 
       const saved = await resultService.saveDraft(payload);
-      showSuccess('Draft results saved successfully.');
+      
+      // Detect if saved draft triggered critical panic alerts (FR-8.3)
+      const hasCritical = saved?.values?.some((v) => v.isCritical === true);
+      if (hasCritical) {
+        setCriticalAlert(true);
+        showWarning('⚠️ Critical panic values detected! Senior Lab Technicians have been alerted automatically.', 'Critical Alert');
+      } else {
+        setCriticalAlert(false);
+        showSuccess('Draft results saved successfully.');
+      }
+
       setFormData((prev) => ({
         ...prev,
         resultId: saved.id,
@@ -194,6 +218,7 @@ const ResultEntryPage = () => {
     setFormData(null);
     setParamValues({});
     setNotes('');
+    setCriticalAlert(false);
   };
 
   return (
@@ -365,6 +390,19 @@ const ResultEntryPage = () => {
 
             {/* Right Column: Parameters Input Workbench */}
             <div className="lg:col-span-8 flex flex-col gap-4">
+              {/* Critical Panic Alert Banner (FR-8.3) */}
+              {criticalAlert && (
+                <div className="bg-red-50 border-l-4 border-red-600 p-4 rounded-r-xl shadow-xs flex items-start gap-3 animate-in fade-in">
+                  <AlertTriangle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+                  <div className="flex-1">
+                    <h4 className="text-sm font-bold text-red-900">⚠️ Critical Panic Alert Active (FR-8.3)</h4>
+                    <p className="text-xs text-red-700 mt-0.5">
+                      One or more recorded values violate clinical panic thresholds. Senior Lab Technicians have been automatically notified via in-app alerts for immediate supervisor verification.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="bg-white rounded-xl shadow-xs border border-gray-100 p-6 flex flex-col gap-5">
                 <div className="flex items-center justify-between border-b border-gray-100 pb-3">
                   <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">

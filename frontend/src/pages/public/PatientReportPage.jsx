@@ -469,10 +469,16 @@ export default function PatientReportPage() {
                       To protect your personal clinical data, we will send a secure 6-digit One-Time Password (OTP) via SMS to your phone.
                     </p>
 
-                    {/* Masked Mobile Pill */}
-                    <div className="inline-flex items-center gap-2 bg-slate-50 border border-slate-200 px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-700 mt-4 shadow-sm">
-                      <Phone className="w-3.5 h-3.5 text-blue-500" />
-                      <span>Registered Mobile: <strong className="font-mono text-slate-900 tracking-wider">{reportInfo.maskedMobile}</strong></span>
+                    {/* Masked Mobile Pill & Validity Window Badge */}
+                    <div className="flex flex-col sm:flex-row items-center justify-center gap-2 mt-4">
+                      <div className="inline-flex items-center gap-2 bg-slate-50 border border-slate-200 px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-700 shadow-sm">
+                        <Phone className="w-3.5 h-3.5 text-blue-500" />
+                        <span>Registered Mobile: <strong className="font-mono text-slate-900 tracking-wider">{reportInfo.maskedMobile}</strong></span>
+                      </div>
+                      <div className="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-200/80 px-3 py-1.5 rounded-xl text-xs font-medium text-emerald-800 shadow-sm">
+                        <Clock className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Downloadable for 30 Days</span>
+                      </div>
                     </div>
                   </div>
 
